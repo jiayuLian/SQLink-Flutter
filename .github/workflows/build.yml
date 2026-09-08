@@ -1,0 +1,95 @@
+name: Build APK & IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+
+  build_apk:
+    needs: analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Generate native project (android)
+        run: |
+          flutter create --platforms=android --org com.cute6696 sqlinkflutter
+          cp -r sqlinkflutter/android .
+          rm -rf sqlinkflutter
+      - name: Set app display name
+        run: sed -i 's/android:label="sqlinkflutter"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+      - name: Build release APK
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  build_ipa:
+    needs: analyze
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Generate native project (ios)
+        run: |
+          flutter create --platforms=ios --org com.cute6696 sqlinkflutter
+          cp -r sqlinkflutter/ios .
+          rm -rf sqlinkflutter
+      - name: Set app display name
+        run: sed -i '' 's|<string>sqlinkflutter</string>|<string>SQLink</string>|' ios/Runner/Info.plist
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+      - name: Package unsigned IPA (TrollStore)
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r SQLink.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipa
+          path: build/ios/iphoneos/SQLink.ipa
+
+  release:
+    needs: [build_apk, build_ipa]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: ipa
+          path: ipa
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Build v${{ github.run_number }}
+          files: |
+            apk/app-release.apk
+            ipa/SQLink.ipa

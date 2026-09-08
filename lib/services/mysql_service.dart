@@ -1,0 +1,133 @@
+import 'package:mysql_client_plus/mysql_client_plus.dart';
+import '../models/connection.dart';
+
+/// 单个查询结果集（结果集或 OK 包）。
+class ResultSetData {
+  final List<String> columns;
+  final List<Map<String, String?>> rows;
+  final int affectedRows;
+  final bool isResultSet;
+
+  ResultSetData.result(this.columns, this.rows)
+      : affectedRows = 0,
+        isResultSet = true;
+  ResultSetData.ok(this.affectedRows)
+      : columns = const [],
+        rows = const [],
+        isResultSet = false;
+}
+
+/// 对单个 MySQL 连接的封装（基于 mysql_client_plus）。
+class MySQLService {
+  final ConnectionProfile profile;
+  MySQLConnection? _conn;
+
+  MySQLService(this.profile);
+
+  Future<void> connect(String password) async {
+    _conn = await MySQLConnection.createConnection(
+      host: profile.host,
+      port: profile.port,
+      userName: profile.user,
+      password: password,
+      databaseName: profile.database,
+      secure: profile.useTLS,
+      onBadCertificate:
+          profile.useTLS && profile.trustSelfSigned ? (_) => true : null,
+    );
+    await _conn!.connect();
+  }
+
+  /// 执行任意 SQL（支持多语句），返回全部结果集。
+  Future<List<ResultSetData>> execute(String sql) async {
+    final conn = _conn;
+    if (conn == null) throw Exception('尚未连接');
+    final List<ResultSetData> out = [];
+    var result = await conn.execute(sql);
+    while (result != null) {
+      if (result.cols.isNotEmpty) {
+        final columns = result.cols.map((c) => c.name).toList();
+        // assoc() 返回 Map<String, dynamic>，统一转成 String? 便于显示/CSV/计数。
+        final rows = result.rows.map((r) {
+          final m = r.assoc();
+          return m.map((k, v) => MapEntry(k, v?.toString()));
+        }).toList();
+        out.add(ResultSetData.result(columns, rows));
+      } else {
+        out.add(ResultSetData.ok(result.affectedRows.toInt()));
+      }
+      result = result.next;
+    }
+    if (out.isEmpty) out.add(ResultSetData.ok(0));
+    return out;
+  }
+
+  Future<List<String>> listDatabases() async {
+    final r = await execute('SHOW DATABASES');
+    if (r.isEmpty || !r.first.isResultSet) return [];
+    return r.first.rows
+        .map((m) => m.values.first ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<Map<String, String>>> listTables(String db) async {
+    final r = await execute('SHOW FULL TABLES FROM `${_esc(db)}`');
+    if (r.isEmpty || !r.first.isResultSet) return [];
+    return r.first.rows.map((m) {
+      final entries = m.entries.toList();
+      final name = entries.isNotEmpty ? (entries[0].value ?? '') : '';
+      final type = entries.length > 1 ? (entries[1].value ?? 'BASE TABLE') : 'BASE TABLE';
+      return {'name': name, 'type': type};
+    }).toList();
+  }
+
+  Future<List<ColumnInfo>> listColumns(String db, String table) async {
+    final r = await execute(
+        'SHOW FULL COLUMNS FROM `${_esc(db)}`.`${_esc(table)}`');
+    if (r.isEmpty || !r.first.isResultSet) return [];
+    return r.first.rows.map((m) {
+      return ColumnInfo(
+        field: m['Field'] ?? '',
+        type: m['Type'] ?? '',
+        nullAllowed: m['Null'] ?? '',
+        key: m['Key'] ?? '',
+        defaultValue: m['Default'],
+        extra: m['Extra'] ?? '',
+        comment: m['Comment'] ?? '',
+      );
+    }).toList();
+  }
+
+  Future<ResultSetData> fetchTable(
+    String db,
+    String table, {
+    int limit = 100,
+    int offset = 0,
+    String? where,
+    String? order,
+  }) async {
+    var sql = 'SELECT * FROM `${_esc(db)}`.`${_esc(table)}`';
+    if (where != null && where.trim().isNotEmpty) sql += ' WHERE $where';
+    if (order != null && order.trim().isNotEmpty) sql += ' ORDER BY $order';
+    sql += ' LIMIT $limit OFFSET $offset';
+    final r = await execute(sql);
+    return r.isNotEmpty ? r.first : ResultSetData.ok(0);
+  }
+
+  Future<int> countTable(String db, String table, {String? where}) async {
+    var sql = 'SELECT COUNT(*) FROM `${_esc(db)}`.`${_esc(table)}`';
+    if (where != null && where.trim().isNotEmpty) sql += ' WHERE $where';
+    final r = await execute(sql);
+    if (r.isEmpty || !r.first.isResultSet) return 0;
+    final v = r.first.rows.firstOrNull?.values.first;
+    return int.tryParse(v ?? '0') ?? 0;
+  }
+
+  String _esc(String s) => s.replaceAll('`', '``');
+
+  void close() {
+    _conn?.close();
+    _conn = null;
+  }
+}
