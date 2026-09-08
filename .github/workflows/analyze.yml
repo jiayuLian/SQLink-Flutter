@@ -4,24 +4,24 @@ on:
   push:
     branches: [develop]
 
-permissions:
-  contents: read
-
+# 防止机器人回写报告时无限触发：回写提交信息含 [analyze-report] 时跳过。
 jobs:
   analyze:
+    if: "!contains(github.event.head_commit.message, '[analyze-report]')"
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter pub get > pubget.txt 2>&1 || true
-      - run: flutter analyze > analyze_report.txt 2>&1 || true
-      - run: cat analyze_report.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: analyze-report
-          path: |
-            analyze_report.txt
-            pubget.txt
+      - run: flutter pub get > PUBGET.md 2>&1 || true
+      - run: flutter analyze > ANALYZE.md 2>&1 || true
+      - name: 回写报告到仓库（便于本地读取，不打包）
+        run: |
+          git config user.email "bot@noreply.github.com"
+          git config user.name "analyze-bot"
+          git add ANALYZE.md PUBGET.md
+          git commit -m "[analyze-report] flutter analyze / pub get 报告" || echo "no changes"
+          git push
