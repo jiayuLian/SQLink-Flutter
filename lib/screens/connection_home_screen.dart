@@ -75,7 +75,9 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
       );
     }
     // 连接成功后进入数据库浏览（分层下钻：库 → 表 → 数据），
-    // 对齐 Swift 的 DatabaseBrowserView。查询通过各层的「新建查询」入口进入。
+    // 对齐 Swift 的 DatabaseBrowserView。若编辑连接时填写了默认数据库，
+    // 直接进入该库的表列表；否则显示全部数据库列表。
+    final defaultDb = widget.profile.database.trim();
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.profile.name.isEmpty
@@ -89,7 +91,10 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
           ),
         ],
       ),
-      body: DatabaseBrowserScreen(service: _service),
+      body: DatabaseBrowserScreen(
+        service: _service,
+        db: defaultDb.isNotEmpty ? defaultDb : null,
+      ),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:mysql_client_plus/mysql_client_plus.dart';
 import '../models/connection.dart';
@@ -77,6 +78,22 @@ class MySQLService {
     return nums.join('.');
   }
 
+  /// 把 mysql_client_plus 可能返回的 Uint8List（bytes）安全解码成字符串。
+  /// 某些 MySQL 版本/配置下，SHOW FULL COLUMNS / SHOW CREATE TABLE 等元数据
+  /// 字段会以 List<int> 形式返回，直接 toString() 会变成 `[98,105,100]` 这种乱码。
+  static String? _decodeCell(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    if (v is List<int>) {
+      try {
+        return utf8.decode(v, allowMalformed: true);
+      } catch (_) {
+        return String.fromCharCodes(v);
+      }
+    }
+    return v.toString();
+  }
+
   /// 执行任意 SQL（支持多语句），返回全部结果集。
   Future<List<ResultSetData>> execute(String sql) async {
     final conn = _conn;
@@ -87,9 +104,10 @@ class MySQLService {
       if (result.cols.isNotEmpty) {
         final columns = result.cols.map((c) => c.name).toList();
         // assoc() 返回 Map<String, dynamic>，统一转成 String? 便于显示/CSV/计数。
+        // 关键：把 Uint8List(bytes) 按 UTF-8 解码，避免元数据字段显示成乱码。
         final rows = result.rows.map((r) {
           final m = r.assoc();
-          return m.map((k, v) => MapEntry(k, v?.toString()));
+          return m.map((k, v) => MapEntry(k, _decodeCell(v)));
         }).toList();
         out.add(ResultSetData.result(columns, rows));
       } else {

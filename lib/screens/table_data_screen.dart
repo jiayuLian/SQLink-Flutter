@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/mysql_service.dart';
@@ -158,98 +159,38 @@ class _TableDataScreenState extends State<TableDataScreen> {
     );
   }
 
-  // ---- 表结构（对齐 Swift 表详情的「结构」页） ----
+  // ---- 表结构：只保留「建表 SQL」（按你要求去掉列信息列表） ----
   Future<void> _showSchema() async {
-    showModalBottomSheet(
+    final ddl = await widget.service.showCreateTable(widget.db, widget.table);
+    if (!mounted) return;
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (_, controller) => FutureBuilder<List<ColumnInfo>>(
-            future: widget.service.listColumns(widget.db, widget.table),
-            builder: (_, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final cols = snap.data ?? [];
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '结构 · ${widget.db}.${widget.table}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.code),
-                          label: const Text('建表 SQL'),
-                          onPressed: () async {
-                            final ddl =
-                                await widget.service.showCreateTable(widget.db, widget.table);
-                            if (!ctx.mounted) return;
-                            showDialog(
-                              context: ctx,
-                              builder: (_) => AlertDialog(
-                                title: const Text('建表 SQL'),
-                                content: SingleChildScrollView(
-                                  child: SelectableText(
-                                    ddl.isEmpty ? '（无建表语句）' : ddl,
-                                    style: const TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.of(ctx).pop(),
-                                    child: const Text('关闭'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: ListView.separated(
-                      controller: controller,
-                      itemCount: cols.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final c = cols[i];
-                        return ListTile(
-                          dense: true,
-                          title: Text(c.field),
-                          subtitle: Text(
-                            '${c.type}'
-                            '${c.key.isNotEmpty ? ' · key=${c.key}' : ''}'
-                            '${c.nullAllowed == 'NO' ? ' · NOT NULL' : ''}'
-                            '${c.comment.isNotEmpty ? ' · ${c.comment}' : ''}',
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Expanded(child: Text('${widget.db}.${widget.table}'))
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: _SqlHighlighter(ddl.isEmpty ? '（无建表语句）' : ddl),
           ),
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: ddl));
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -614,5 +555,64 @@ class _TableDataScreenState extends State<TableDataScreen> {
         ),
       ),
     );
+  }
+}
+
+/// 简单的 SQL 语法高亮组件（给建表 SQL 加关键词/字符串/标识符颜色）。
+class _SqlHighlighter extends StatelessWidget {
+  final String sql;
+  const _SqlHighlighter(this.sql);
+
+  static const _keywords = {
+    'CREATE', 'TABLE', 'PRIMARY', 'KEY', 'NOT', 'NULL', 'AUTO_INCREMENT',
+    'DEFAULT', 'UNIQUE', 'INDEX', 'FOREIGN', 'REFERENCES', 'ON', 'DELETE',
+    'UPDATE', 'CASCADE', 'SET', 'ENGINE', 'CHARSET', 'COLLATE', 'COMMENT',
+    'VARCHAR', 'INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'INTEGER',
+    'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'CHAR', 'TEXT', 'LONGTEXT',
+    'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIME', 'JSON', 'UNSIGNED',
+    'IF', 'EXISTS', 'DROP', 'ALTER', 'ADD', 'MODIFY', 'COLUMN', 'CONSTRAINT',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final plainStyle = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 12,
+      color: theme.colorScheme.onSurface,
+    );
+
+    TextSpan span(String text, Color color, {bool bold = false}) =>
+        TextSpan(
+          text: text,
+          style: plainStyle.copyWith(
+            color: color,
+            fontWeight: bold ? FontWeight.bold : null,
+          ),
+        );
+
+    final spans = <TextSpan>[];
+    final regex = RegExp(r"(\s+)|('[^']*')|(`[^`]+`)|(\w+)|(.+)");
+    for (final m in regex.allMatches(sql)) {
+      final text = m.group(0)!;
+      if (m.group(1) != null) {
+        spans.add(span(text, theme.colorScheme.onSurface));
+      } else if (m.group(2) != null) {
+        spans.add(span(text, isDark ? Colors.lightGreen : Colors.green));
+      } else if (m.group(3) != null) {
+        spans.add(span(text, isDark ? Colors.orange.shade300 : Colors.orange.shade800));
+      } else if (m.group(4) != null) {
+        if (_keywords.contains(text.toUpperCase())) {
+          spans.add(span(text, isDark ? Colors.cyan.shade300 : Colors.blue, bold: true));
+        } else {
+          spans.add(span(text, theme.colorScheme.onSurface));
+        }
+      } else {
+        spans.add(span(text, theme.colorScheme.onSurface));
+      }
+    }
+
+    return RichText(text: TextSpan(children: spans, style: plainStyle));
   }
 }

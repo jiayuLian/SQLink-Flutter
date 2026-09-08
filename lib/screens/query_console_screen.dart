@@ -454,61 +454,72 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   Widget build(BuildContext context) {
     final resultSets = _outcomes?.where((o) => o.isResultSet).toList() ?? [];
     final isSingle = resultSets.length == 1;
-    return Column(
-      children: [
-        // 状态 / 上下文栏（对齐 Swift 顶部 HStack）。
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.db == null ? '未选择数据库' : '当前数据库：${widget.db}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('查询控制台'),
+      ),
+      body: Column(
+        children: [
+          // 状态 / 上下文栏（对齐 Swift 顶部 HStack）。
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.db == null ? '未选择数据库' : '当前数据库：${widget.db}',
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                  ),
                 ),
-              ),
-              if (widget.db != null) ...[
-                if (_contextTable.isNotEmpty || (widget.defaultTable?.isNotEmpty ?? false))
-                  TextButton.icon(
-                    onPressed: _insertSelectAll,
-                    icon: const Icon(Icons.add_box, size: 16),
-                    label: const Text('SELECT *', style: TextStyle(fontSize: 12)),
-                  ),
-                if (_tables.isNotEmpty)
-                  DropdownButton<String>(
-                    value: _contextTable,
-                    hint: const Text('上下文表', style: TextStyle(fontSize: 12)),
-                    underline: const SizedBox.shrink(),
-                    onChanged: (v) {
-                      setState(() {
-                        _contextTable = v ?? '';
-                      });
-                      _loadContextColumns();
-                    },
-                    items: [
-                      const DropdownMenuItem(value: '', child: Text('无上下文')),
-                      for (final t in _tables)
-                        DropdownMenuItem(value: t, child: Text(t)),
-                    ],
-                  ),
+                if (widget.db != null) ...[
+                  if (_contextTable.isNotEmpty || (widget.defaultTable?.isNotEmpty ?? false))
+                    TextButton.icon(
+                      onPressed: _insertSelectAll,
+                      icon: const Icon(Icons.add_box, size: 16),
+                      label: const Text('SELECT *', style: TextStyle(fontSize: 12)),
+                    ),
+                  if (_tables.isNotEmpty)
+                    DropdownButton<String>(
+                      value: _contextTable,
+                      hint: const Text('上下文表', style: TextStyle(fontSize: 12)),
+                      underline: const SizedBox.shrink(),
+                      onChanged: (v) {
+                        setState(() {
+                          _contextTable = v ?? '';
+                        });
+                        _loadContextColumns();
+                      },
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('无上下文')),
+                        for (final t in _tables)
+                          DropdownMenuItem(value: t, child: Text(t)),
+                      ],
+                    ),
+                ],
               ],
-            ],
-          ),
-        ),
-        // SQL 编辑框（等宽字体，对齐 Swift .monospaced）。
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: TextField(
-            controller: _sql,
-            maxLines: 4,
-            minLines: 2,
-            style: const TextStyle(fontFamily: 'monospace'),
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              hintText: '输入 SQL，例如 SELECT 1',
             ),
           ),
-        ),
+          // SQL 编辑框：带填充背景与主题自适应文字颜色，避免黑底看不清。
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: TextField(
+              controller: _sql,
+              maxLines: 4,
+              minLines: 2,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurface,
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                border: const OutlineInputBorder(),
+                hintText: '输入 SQL，例如 SELECT 1',
+                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+              ),
+            ),
+          ),
         // 自动补全 chips（关键字 + 表名 + 上下文列）。
         if (_suggestions.isNotEmpty)
           SizedBox(
@@ -620,8 +631,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           child: _buildBody(isSingle: isSingle, single: isSingle ? resultSets.first : null),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildBody({
     required bool isSingle,
