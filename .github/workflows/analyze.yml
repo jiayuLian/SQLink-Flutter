@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   analyze:
+    # 回写报告的提交信息含 [analyze-report]，该守卫可避免无限递归触发。
     if: "!contains(github.event.head_commit.message, '[analyze-report]')"
     runs-on: ubuntu-latest
     steps:
