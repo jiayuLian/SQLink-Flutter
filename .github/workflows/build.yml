@@ -114,11 +114,11 @@ jobs:
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/
-          zip -r SQLink.ipa Payload
+          zip -r SQLink-Flutter.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
           name: ipa
-          path: build/ios/iphoneos/SQLink.ipa
+          path: build/ios/iphoneos/SQLink-Flutter.ipa
           retention-days: 7
 
   release:
@@ -133,6 +133,10 @@ jobs:
         with:
           name: ipa
           path: ipa
+      - name: Rename artifacts for release
+        run: |
+          mv apk/app-release.apk apk/SQLink-Flutter.apk
+          ls -la apk ipa
       - name: Remove previous latest release & tag (keep only one version)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -154,5 +158,5 @@ jobs:
           tag_name: latest
           name: SQLink latest
           files: |
-            apk/app-release.apk
-            ipa/SQLink.ipa
+            apk/SQLink-Flutter.apk
+            ipa/SQLink-Flutter.ipa
