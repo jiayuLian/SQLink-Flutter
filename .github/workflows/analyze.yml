@@ -9,21 +9,20 @@ permissions:
 
 jobs:
   analyze:
-    if: "!contains(github.event.head_commit.message, '[analyze-report]')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - run: flutter --version > VERS.md 2>&1 || true
       - run: flutter pub get > PUBGET.md 2>&1 || true
       - run: flutter analyze > ANALYZE.md 2>&1 || true
-      - name: emit annotations
-        continue-on-error: true
-        run: |
-          if [ -f ANALYZE.md ]; then
-            while IFS= read -r line; do
-              [ -z "$line" ] && continue
-              echo "::error::$line"
-            done < ANALYZE.md
-          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analyze-report
+          path: |
+            VERS.md
+            PUBGET.md
+            ANALYZE.md
