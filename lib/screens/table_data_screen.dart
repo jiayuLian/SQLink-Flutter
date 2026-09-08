@@ -361,7 +361,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
               onPressed: (_hasChanges && !_saving) ? _saveEdits : null,
             ),
           ] else ...[
-            if (pkOk)
+            if (pkOk && hasFilter)
               IconButton(
                 icon: const Icon(Icons.edit),
                 tooltip: '编辑',
@@ -430,6 +430,12 @@ class _TableDataScreenState extends State<TableDataScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               child: Text('⚠ 无主键/唯一键，不可编辑',
+                  style: TextStyle(color: Colors.orange, fontSize: 12)),
+            ),
+          if (!_editMode && pkOk && !hasFilter)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: Text('⚠ 请先设置筛选或排序后再编辑',
                   style: TextStyle(color: Colors.orange, fontSize: 12)),
             ),
           const Divider(),

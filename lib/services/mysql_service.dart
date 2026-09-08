@@ -23,10 +23,12 @@ class ResultSetData {
 class MySQLService {
   final ConnectionProfile profile;
   MySQLConnection? _conn;
+  String? _password;
 
   MySQLService(this.profile);
 
   Future<void> connect(String password) async {
+    _password = password;
     // 若已有连接（理论上每个 ConnectionHomeScreen 只连一次），先关闭旧的，避免泄漏。
     if (_conn != null) {
       _conn!.close();
@@ -95,7 +97,32 @@ class MySQLService {
   }
 
   /// 执行任意 SQL（支持多语句），返回全部结果集。
+  /// 连接被服务器关闭时自动重连一次再试（对齐 Swift 的 withReconnect）。
   Future<List<ResultSetData>> execute(String sql) async {
+    try {
+      return await _executeOnce(sql);
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if ((msg.contains('connection closed') ||
+              msg.contains('socket') ||
+              msg.contains('not connected') ||
+              msg.contains('write failed')) &&
+          _password != null) {
+        await reconnect();
+        return await _executeOnce(sql);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> reconnect() async {
+    if (_password == null) throw Exception('尚未连接');
+    _conn?.close();
+    _conn = null;
+    await connect(_password!);
+  }
+
+  Future<List<ResultSetData>> _executeOnce(String sql) async {
     final conn = _conn;
     if (conn == null) throw Exception('尚未连接');
     final List<ResultSetData> out = [];

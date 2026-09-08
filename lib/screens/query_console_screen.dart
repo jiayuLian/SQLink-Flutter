@@ -62,6 +62,21 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     super.initState();
     _loadTables();
     _loadSavedSql();
+    // 输入框变化时刷新候选提示。
+    _sql.addListener(_onSqlChanged);
+  }
+
+  void _onSqlChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _sql.removeListener(_onSqlChanged);
+    _sql.dispose();
+    for (final c in _editControllers.values) c.dispose();
+    _editControllers.clear();
+    super.dispose();
   }
 
   Future<void> _loadTables() async {
@@ -110,11 +125,12 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     }
   }
 
+  /// 取出光标前正在输入的“当前词”。以空格/换行/逗号/括号/反引号为界，
+  /// 并去掉首尾反引号，方便对 `table`.`field` 这种场景也能提示。
   String get _currentWord {
-    final t = _sql.text;
-    if (t.isEmpty) return '';
-    final parts = t.split(RegExp(r'\s+'));
-    return parts.last;
+    final t = _sql.text.substring(0, _sql.selection.baseOffset.clamp(0, _sql.text.length));
+    final match = RegExp(r'[\s,()`]+([^\s,()`]*)$').firstMatch(t);
+    return (match?.group(1) ?? '').replaceAll('`', '');
   }
 
   List<String> get _suggestions {
@@ -134,7 +150,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
         out.add(item);
       }
     }
-    return out;
+    return out.take(12).toList();
   }
 
   Future<void> _run() async {
@@ -189,7 +205,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   Future<void> _tryDetectEditable(String raw, ResultSetData rs) async {
     final sql = raw.trim();
     final forbidden =
-        RegExp(r'(?i)\b(join|union|group\s+by|having|limit|offset|into|update|delete|insert|replace)\b');
+        RegExp(r'\b(join|union|group\s+by|having|limit|offset|into|update|delete|insert|replace)\b',
+            caseSensitive: false);
     if (sql.contains(forbidden)) {
       if (mounted) setState(() => _canEdit = false);
       return;
@@ -198,7 +215,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       if (mounted) setState(() => _canEdit = false);
       return;
     }
-    final fromMatch = RegExp(r'(?i)\bfrom\b').firstMatch(sql);
+    final fromMatch = RegExp(r'\bfrom\b', caseSensitive: false).firstMatch(sql);
     if (fromMatch == null) {
       if (mounted) setState(() => _canEdit = false);
       return;
@@ -258,7 +275,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
         return;
       }
       final hasWhere =
-          RegExp(r'(?i)\bwhere\b').hasMatch(sql);
+          RegExp(r'\bwhere\b', caseSensitive: false).hasMatch(sql);
       if (mounted) {
         setState(() {
           _editTable = tableName;
@@ -369,12 +386,17 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   }
 
   void _insertSuggestion(String word) {
-    final t = _sql.text;
-    final trimmed = t.replaceAll(RegExp(r'\S+$'), '');
-    _sql.text = '$trimmed$word ';
-    _sql.selection = TextSelection.fromPosition(
-      TextPosition(offset: _sql.text.length),
-    );
+    final text = _sql.text;
+    final cursor = _sql.selection.baseOffset.clamp(0, text.length);
+    final before = text.substring(0, cursor);
+    // 替换光标前最后一个词（含反引号）。
+    final replacement = RegExp(r'[^\s,()`]*$').firstMatch(before);
+    final start = replacement?.start ?? cursor;
+    final newBefore = before.replaceRange(start, before.length, word);
+    final suffix = text.substring(cursor);
+    _sql.text = '$newBefore $suffix';
+    final newCursor = newBefore.length + 1;
+    _sql.selection = TextSelection.fromPosition(TextPosition(offset: newCursor));
   }
 
   void _insertSelectAll() {
@@ -410,44 +432,21 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   void _showHistory() {
     final settings = Provider.of<AppSettings>(context, listen: false);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => ListView(
-        children: [
-          ListTile(
-            title: const Text('SQL 历史', style: TextStyle(fontWeight: FontWeight.bold)),
-            trailing: settings.history.isEmpty
-                ? null
-                : TextButton(
-                    onPressed: () {
-                      settings.clearHistory();
-                      Navigator.of(ctx).pop();
-                    },
-                    child: const Text('清空'),
-                  ),
-          ),
-          if (settings.history.isEmpty)
-            const ListTile(title: Text('暂无历史')),
-          for (final h in settings.history)
-            ListTile(
-              title: Text(h, maxLines: 2, overflow: TextOverflow.ellipsis),
-              onTap: () {
-                _sql.text = h;
-                Navigator.of(ctx).pop();
-              },
-            ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => _HistoryPage(
+          history: settings.history,
+          onPick: (h) {
+            _sql.text = h;
+            _sql.selection = TextSelection.fromPosition(
+              TextPosition(offset: _sql.text.length),
+            );
+            Navigator.of(ctx).pop();
+          },
+          onClear: () => settings.clearHistory(),
+        ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _sql.dispose();
-    for (final c in _editControllers.values) c.dispose();
-    _editControllers.clear();
-    super.dispose();
   }
 
   @override
@@ -465,36 +464,45 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
+                Flexible(
                   child: Text(
                     widget.db == null ? '未选择数据库' : '当前数据库：${widget.db}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
                   ),
                 ),
                 if (widget.db != null) ...[
                   if (_contextTable.isNotEmpty || (widget.defaultTable?.isNotEmpty ?? false))
                     TextButton.icon(
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
                       onPressed: _insertSelectAll,
                       icon: const Icon(Icons.add_box, size: 16),
                       label: const Text('SELECT *', style: TextStyle(fontSize: 12)),
                     ),
                   if (_tables.isNotEmpty)
-                    DropdownButton<String>(
-                      value: _contextTable,
-                      hint: const Text('上下文表', style: TextStyle(fontSize: 12)),
-                      underline: const SizedBox.shrink(),
-                      onChanged: (v) {
-                        setState(() {
-                          _contextTable = v ?? '';
-                        });
-                        _loadContextColumns();
-                      },
-                      items: [
-                        const DropdownMenuItem(value: '', child: Text('无上下文')),
-                        for (final t in _tables)
-                          DropdownMenuItem(value: t, child: Text(t)),
-                      ],
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: _contextTable.isEmpty ? null : _contextTable,
+                          hint: const Text('上下文表', style: TextStyle(fontSize: 12)),
+                          onChanged: (v) {
+                            setState(() {
+                              _contextTable = v ?? '';
+                            });
+                            _loadContextColumns();
+                          },
+                          items: [
+                            const DropdownMenuItem(value: '', child: Text('无上下文')),
+                            for (final t in _tables)
+                              DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      ),
                     ),
                 ],
               ],
@@ -740,6 +748,62 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
             );
           }),
         ),
+      ),
+    );
+  }
+}
+
+/// SQL 历史页：独立页面 + AppBar + SafeArea，避免底部弹层与系统状态栏重叠。
+class _HistoryPage extends StatelessWidget {
+  final List<String> history;
+  final ValueChanged<String> onPick;
+  final VoidCallback onClear;
+
+  const _HistoryPage({
+    required this.history,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SQL 历史'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          if (history.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                onClear();
+                Navigator.of(context).pop();
+              },
+              child: const Text('清空'),
+            ),
+        ],
+      ),
+      body: SafeArea(
+        child: history.isEmpty
+            ? const Center(child: Text('暂无查询历史'))
+            : ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                itemCount: history.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final h = history[i];
+                  return ListTile(
+                    title: Text(
+                      h,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => onPick(h),
+                  );
+                },
+              ),
       ),
     );
   }
