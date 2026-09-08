@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/connection.dart';
 import '../services/mysql_service.dart';
-import 'query_console_screen.dart';
 import 'database_browser_screen.dart';
 
 class ConnectionHomeScreen extends StatefulWidget {
@@ -75,34 +74,22 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.profile.name.isEmpty
-              ? widget.profile.host
-              : widget.profile.name),
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.terminal), text: '查询'),
-              Tab(icon: Icon(Icons.schema), text: '浏览'),
-            ],
+    // 连接成功后进入数据库浏览（分层下钻：库 → 表 → 数据），
+    // 对齐 Swift 的 DatabaseBrowserView。查询通过各层的「新建查询」入口进入。
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.profile.name.isEmpty
+            ? widget.profile.host
+            : widget.profile.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: '断开',
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: '断开',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
-        ),
-        body: TabBarView(
-          children: [
-            QueryConsoleScreen(service: _service, db: widget.profile.database),
-            DatabaseBrowserScreen(service: _service),
-          ],
-        ),
+        ],
       ),
+      body: DatabaseBrowserScreen(service: _service),
     );
   }
 }

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/mysql_service.dart';
-import '../models/connection.dart' show ColumnInfo;
 import '../screens/table_data_screen.dart';
+import '../screens/query_console_screen.dart';
 
+/// 数据库浏览（对齐 Swift 的 DatabaseBrowserView → TableListView 分层下钻）。
+/// - [db] 为 null：显示数据库列表；点击进入该库的表列表。
+/// - [db] 非 null：显示该库的表列表；点击进入表数据页。
+/// 两级均提供「新建查询」入口；表列表页通过系统返回键回到数据库列表（切换库）。
 class DatabaseBrowserScreen extends StatefulWidget {
   final MySQLService service;
-  const DatabaseBrowserScreen({super.key, required this.service});
+  final String? db;
+  const DatabaseBrowserScreen({super.key, required this.service, this.db});
 
   @override
   State<DatabaseBrowserScreen> createState() => _DatabaseBrowserScreenState();
@@ -13,15 +18,49 @@ class DatabaseBrowserScreen extends StatefulWidget {
 
 class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
   late final Future<List<String>> _databases;
+  late final Future<List<Map<String, String>>> _tables;
 
   @override
   void initState() {
     super.initState();
-    _databases = widget.service.listDatabases();
+    if (widget.db == null) {
+      _databases = widget.service.listDatabases();
+    } else {
+      _tables = widget.service.listTables(widget.db!);
+    }
+  }
+
+  void _newQuery(BuildContext context, [String? db]) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QueryConsoleScreen(
+          service: widget.service,
+          db: db ?? widget.service.profile.database,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDbList = widget.db == null;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isDbList ? '数据库' : widget.db!),
+        // 表列表页由数据库列表 push 进入，系统返回键即「切换库」。
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_comment),
+            tooltip: '新建查询',
+            onPressed: () => _newQuery(context, isDbList ? null : widget.db),
+          ),
+        ],
+      ),
+      body: isDbList ? _buildDbList() : _buildTableList(),
+    );
+  }
+
+  Widget _buildDbList() {
     return FutureBuilder<List<String>>(
       future: _databases,
       builder: (ctx, snap) {
@@ -35,185 +74,68 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
         if (dbs.isEmpty) {
           return const Center(child: Text('没有可用的数据库'));
         }
-        return ListView.builder(
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
           itemCount: dbs.length,
-          itemBuilder: (_, i) => _DatabaseTile(service: widget.service, db: dbs[i]),
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, i) => Card(
+            child: ListTile(
+              leading: const Icon(Icons.folder),
+              title: Text(dbs[i]),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      DatabaseBrowserScreen(service: widget.service, db: dbs[i]),
+                ),
+              ),
+            ),
+          ),
         );
       },
     );
   }
-}
 
-class _DatabaseTile extends StatefulWidget {
-  final MySQLService service;
-  final String db;
-  const _DatabaseTile({required this.service, required this.db});
-
-  @override
-  State<_DatabaseTile> createState() => _DatabaseTileState();
-}
-
-class _DatabaseTileState extends State<_DatabaseTile> {
-  List<Map<String, String>>? _tables;
-  bool _loading = false;
-  String? _error;
-
-  Future<void> _load() async {
-    if (_loading || _tables != null) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      _tables = await widget.service.listTables(widget.db);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ExpansionTile(
-      leading: const Icon(Icons.folder),
-      title: Text(widget.db),
-      onExpansionChanged: (v) => v ? _load() : null,
-      children: [
-        if (_loading)
-          const ListTile(title: Text('加载表…'))
-        else if (_error != null)
-          ListTile(
-            title: Text('加载失败：$_error', style: const TextStyle(color: Colors.red)),
-            onTap: _load,
-          )
-        else if (_tables == null)
-          const SizedBox.shrink()
-        else if (_tables!.isEmpty)
-          const ListTile(title: Text('（无表）'))
-        else
-          for (final t in _tables!)
-            _TableTile(service: widget.service, db: widget.db, table: t),
-      ],
-    );
-  }
-}
-
-class _TableTile extends StatefulWidget {
-  final MySQLService service;
-  final String db;
-  final Map<String, String> table;
-  const _TableTile({
-    required this.service,
-    required this.db,
-    required this.table,
-  });
-
-  @override
-  State<_TableTile> createState() => _TableTileState();
-}
-
-class _TableTileState extends State<_TableTile> {
-  List<ColumnInfo>? _columns;
-  bool _loading = false;
-  String? _error;
-
-  Future<void> _load() async {
-    if (_loading || _columns != null) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      _columns = await widget.service.listColumns(widget.db, widget.table['name']!);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  /// 对齐 Swift 表详情的「查看建表 SQL」：弹窗展示 SHOW CREATE TABLE 结果（等宽字体）。
-  Future<void> _showDDL(BuildContext context) async {
-    final name = widget.table['name'] ?? '';
-    String ddl;
-    try {
-      ddl = await widget.service.showCreateTable(widget.db, name);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('加载建表 SQL 失败：$e')));
-      }
-      return;
-    }
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('建表 SQL · $name'),
-        content: SingleChildScrollView(
-          child: SelectableText(
-            ddl.isEmpty ? '（无建表语句）' : ddl,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isView = widget.table['type'] == 'VIEW';
-    return ExpansionTile(
-      leading: Icon(isView ? Icons.visibility : Icons.table_chart),
-      title: Text(widget.table['name'] ?? ''),
-      onExpansionChanged: (v) => v ? _load() : null,
-      children: [
-        ListTile(
-          leading: const Icon(Icons.preview),
-          title: const Text('浏览数据'),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => TableDataScreen(
-                service: widget.service,
-                db: widget.db,
-                table: widget.table['name']!,
+  Widget _buildTableList() {
+    return FutureBuilder<List<Map<String, String>>>(
+      future: _tables,
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text('加载失败：${snap.error}'));
+        }
+        final tables = snap.data ?? [];
+        if (tables.isEmpty) {
+          return const Center(child: Text('（该库没有表）'));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: tables.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, i) {
+            final t = tables[i];
+            final isView = t['type'] == 'VIEW';
+            return Card(
+              child: ListTile(
+                leading: Icon(isView ? Icons.visibility : Icons.table_chart),
+                title: Text(t['name'] ?? ''),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TableDataScreen(
+                      service: widget.service,
+                      db: widget.db!,
+                      table: t['name']!,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.schema),
-          title: const Text('查看建表 SQL'),
-          onTap: () => _showDDL(context),
-        ),
-        if (_loading)
-          const ListTile(title: Text('加载列…'))
-        else if (_error != null)
-          ListTile(
-            title: Text('加载失败：$_error', style: const TextStyle(color: Colors.red)),
-            onTap: _load,
-          )
-        else if (_columns == null)
-          const SizedBox.shrink()
-        else
-          for (final c in _columns!)
-            ListTile(
-              dense: true,
-              title: Text(c.field),
-              subtitle: Text(
-                '${c.type}'
-                '${c.key.isNotEmpty ? ' · key=${c.key}' : ''}'
-                '${c.nullAllowed == 'NO' ? ' · NOT NULL' : ''}',
-              ),
-            ),
-      ],
+            );
+          },
+        );
+      },
     );
   }
 }
