@@ -86,7 +86,11 @@ jobs:
         run: |
           plutil -replace CFBundleDisplayName -string SQLink ios/Runner/Info.plist
           plutil -replace CFBundleIdentifier -string com.jiayu.sqlinkFlutter ios/Runner/Info.plist
-          plutil -replace NSAppTransportSecurity -json '{"NSAllowsArbitraryLoads":true}' ios/Runner/Info.plist
+          # 移除模板中可能存在的旧 ATS 配置，避免 plutil -replace 冲突；再写入完全放开网络限制的字典。
+          plutil -remove NSAppTransportSecurity ios/Runner/Info.plist 2>/dev/null || true
+          plutil -replace NSAppTransportSecurity -json '{"NSAllowsArbitraryLoads":true,"NSAllowsLocalNetworking":true}' ios/Runner/Info.plist
+          echo "Info.plist ATS config:"
+          plutil -p ios/Runner/Info.plist | grep -A2 NSAppTransportSecurity || true
       - name: Replace app icon
         run: |
           rm -f ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png

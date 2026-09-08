@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:mysql_client_plus/mysql_client_plus.dart';
@@ -34,35 +35,90 @@ class MySQLService {
       _conn!.close();
       _conn = null;
     }
+    final hostRaw = profile.host.trim();
+    if (hostRaw.isEmpty) {
+      throw Exception('主机 / IP 不能为空');
+    }
+    if (profile.port <= 0 || profile.port > 65535) {
+      throw Exception('端口无效，请输入 1-65535 之间的数字');
+    }
+    final user = profile.user.trim();
+    if (user.isEmpty) {
+      throw Exception('用户名不能为空');
+    }
     // 跟随连接编辑页的 SSL 开关：开 = TLS 加密，关 = 明文连接（与 Swift 一致）。
     final useTLS = profile.useTLS;
     // 若主机是 IPv4 字面量，强制使用 IPv4 地址对象连接，避免 Dart Socket.connect
     // 在部分 iOS 网络环境下解析到 IPv6 映射地址出现 errno 65 / No route to host。
     dynamic host;
-    final ipv4 = _parseIpv4(profile.host);
+    final ipv4 = _parseIpv4(hostRaw);
     if (ipv4 != null) {
       host = InternetAddress(ipv4, type: InternetAddressType.IPv4);
     } else {
-      host = profile.host;
+      host = hostRaw;
     }
-    _conn = await MySQLConnection.createConnection(
-      host: host,
-      port: profile.port,
-      userName: profile.user,
-      password: password,
-      databaseName: profile.database,
-      secure: useTLS,
-      onBadCertificate: (_) => true,
-    );
-    // 对齐 Swift：底层 socket 读写超时设为 30 秒。
-    await _conn!.connect().timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        _conn?.close();
-        _conn = null;
-        throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
-      },
-    );
+    try {
+      _conn = await MySQLConnection.createConnection(
+        host: host,
+        port: profile.port,
+        userName: user,
+        password: password,
+        databaseName: profile.database.trim(),
+        secure: useTLS,
+        onBadCertificate: (_) => true,
+      );
+      // 对齐 Swift：底层 socket 读写超时设为 30 秒。
+      await _conn!.connect().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          _conn?.close();
+          _conn = null;
+          throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
+        },
+      );
+    } on SocketException catch (e, s) {
+      _conn?.close();
+      _conn = null;
+      final msg = e.message.toLowerCase();
+      final osErr = e.osError?.message.toLowerCase() ?? '';
+      final combined = '$msg $osErr';
+      if (combined.contains('refused') || combined.contains('connection refused')) {
+        throw Exception('连接被拒绝，请检查 IP 是否正确、端口 ${profile.port} 是否开放');
+      }
+      if (combined.contains('no route to host') ||
+          combined.contains('network is unreachable') ||
+          combined.contains('errno = 65') ||
+          combined.contains('errno = 51')) {
+        throw Exception('无法到达服务器 ${profile.host}:${profile.port}，请检查 IP/端口、网络或防火墙');
+      }
+      if (combined.contains('timed out') || combined.contains('timeout')) {
+        throw Exception('连接超时，请检查主机 / 端口 / 网络是否可达');
+      }
+      // 兜底：保留原始信息但标注为网络错误。
+      throw Exception('网络连接失败：$e');
+    } on HandshakeException catch (e) {
+      _conn?.close();
+      _conn = null;
+      throw Exception('SSL/TLS 握手失败：${e.message}，请确认服务器已开启 SSL 或关闭"使用 SSL 连接"');
+    } on MySQLClientException catch (e) {
+      _conn?.close();
+      _conn = null;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('access denied') ||
+          msg.contains('authentication') ||
+          msg.contains('password') ||
+          msg.contains('user')) {
+        throw Exception('账号或密码错误，请检查用户名 / 密码');
+      }
+      if (msg.contains('unknown database')) {
+        throw Exception('默认数据库不存在，请检查"默认数据库"填写是否正确');
+      }
+      rethrow;
+    } catch (e) {
+      _conn?.close();
+      _conn = null;
+      rethrow;
+    }
   }
 
   /// 解析纯 IPv4 字面量地址；非 IPv4 返回 null，让 Socket 走域名解析。

@@ -99,9 +99,14 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String detail = e.toString();
+        // 去掉 Dart Exception 的默认 "Exception: " 前缀，让提示更直接。
+        if (detail.startsWith('Exception: ')) {
+          detail = detail.substring('Exception: '.length);
+        }
         setState(() {
           _testOk = false;
-          _testMessage = '连接失败：$e';
+          _testMessage = '连接失败：$detail';
         });
       }
     } finally {
