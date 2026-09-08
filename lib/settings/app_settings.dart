@@ -60,4 +60,24 @@ class AppSettings extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     await p.setStringList('sqlHistory', list);
   }
+
+  /// 按「数据库 + 表」记忆上次输入的 SQL（对齐 Swift 的 sqlKey 记忆）。
+  /// 仅当 autoSaveSQL 开启时由页面读取/写入；全局历史始终记录（见 addHistory）。
+  Future<String?> getSavedSQL(String db, String table) async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString('sqlink.sql.${db}_${table}');
+  }
+
+  Future<void> saveSQL(String db, String table, String sql) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('sqlink.sql.${db}_${table}', sql);
+  }
+
+  /// 清空全局 SQL 历史（对齐 Swift QueryHistory.clear）。
+  Future<void> clearHistory() async {
+    history = [];
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.remove('sqlHistory');
+  }
 }

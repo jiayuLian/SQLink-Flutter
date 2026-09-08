@@ -9,6 +9,7 @@ import '../services/csv_export.dart';
 import '../settings/app_settings.dart';
 import '../widgets/result_grid.dart';
 import '../widgets/filter_builder.dart';
+import '../screens/query_console_screen.dart';
 
 class TableDataScreen extends StatefulWidget {
   final MySQLService service;
@@ -86,6 +87,13 @@ class _TableDataScreenState extends State<TableDataScreen> {
     _pageSize = Provider.of<AppSettings>(context, listen: false).pageSize;
   }
 
+  @override
+  void dispose() {
+    for (final c in _editControllers.values) c.dispose();
+    _editControllers.clear();
+    super.dispose();
+  }
+
   Future<void> _loadColumns() async {
     try {
       final cols = await widget.service.listColumns(widget.db, widget.table);
@@ -147,6 +155,101 @@ class _TableDataScreenState extends State<TableDataScreen> {
     Share.shareXFiles(
       [XFile.fromData(utf8.encode(sql), name: '${widget.table}.sql', mimeType: 'text/sql')],
       subject: '${widget.db}.${widget.table}',
+    );
+  }
+
+  // ---- 表结构（对齐 Swift 表详情的「结构」页） ----
+  Future<void> _showSchema() async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (_, controller) => FutureBuilder<List<ColumnInfo>>(
+            future: widget.service.listColumns(widget.db, widget.table),
+            builder: (_, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final cols = snap.data ?? [];
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '结构 · ${widget.db}.${widget.table}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.code),
+                          label: const Text('建表 SQL'),
+                          onPressed: () async {
+                            final ddl =
+                                await widget.service.showCreateTable(widget.db, widget.table);
+                            if (!ctx.mounted) return;
+                            showDialog(
+                              context: ctx,
+                              builder: (_) => AlertDialog(
+                                title: const Text('建表 SQL'),
+                                content: SingleChildScrollView(
+                                  child: SelectableText(
+                                    ddl.isEmpty ? '（无建表语句）' : ddl,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(),
+                                    child: const Text('关闭'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: controller,
+                      itemCount: cols.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final c = cols[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(c.field),
+                          subtitle: Text(
+                            '${c.type}'
+                            '${c.key.isNotEmpty ? ' · key=${c.key}' : ''}'
+                            '${c.nullAllowed == 'NO' ? ' · NOT NULL' : ''}'
+                            '${c.comment.isNotEmpty ? ' · ${c.comment}' : ''}',
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -279,6 +382,26 @@ class _TableDataScreenState extends State<TableDataScreen> {
       appBar: AppBar(
         title: Text('${widget.db}.${widget.table}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.schema),
+            tooltip: '结构',
+            onPressed: _editMode ? null : _showSchema,
+          ),
+          IconButton(
+            icon: const Icon(Icons.terminal),
+            tooltip: '查询控制台',
+            onPressed: _editMode
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => QueryConsoleScreen(
+                          service: widget.service,
+                          db: widget.db,
+                          defaultTable: widget.table,
+                        ),
+                      ),
+                    ),
+          ),
           if (_editMode) ...[
             IconButton(
               icon: const Icon(Icons.close),
@@ -409,6 +532,22 @@ class _TableDataScreenState extends State<TableDataScreen> {
                           _load();
                         }
                       : null,
+                ),
+                PopupMenuButton<int>(
+                  icon: const Icon(Icons.view_column),
+                  tooltip: '每页条数',
+                  initialValue: ps,
+                  onSelected: (v) {
+                    _pageSize = v;
+                    _offset = 0;
+                    _load();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 50, child: Text('每页 50 条')),
+                    PopupMenuItem(value: 100, child: Text('每页 100 条')),
+                    PopupMenuItem(value: 200, child: Text('每页 200 条')),
+                    PopupMenuItem(value: 500, child: Text('每页 500 条')),
+                  ],
                 ),
               ],
             ),
