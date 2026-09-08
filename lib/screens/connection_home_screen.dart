@@ -56,7 +56,10 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
               children: [
                 const Icon(Icons.error_outline, size: 48, color: Colors.red),
                 const SizedBox(height: 12),
-                Text('连接失败：\n$_error', textAlign: TextAlign.center),
+                Text(
+                  '连接失败：\n${_error!.startsWith('Exception: ') ? _error!.substring('Exception: '.length) : _error}',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),

@@ -177,7 +177,12 @@ class _ConnectionCard extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context).pop();
-      scaffold.showSnackBar(SnackBar(content: Text('连接失败：$e')));
+      // 去掉 Dart Exception 默认前缀，与测试按钮提示保持一致。
+      final detail = e.toString();
+      final msg = detail.startsWith('Exception: ')
+          ? detail.substring('Exception: '.length)
+          : detail;
+      scaffold.showSnackBar(SnackBar(content: Text('连接失败：$msg')));
     }
   }
 }

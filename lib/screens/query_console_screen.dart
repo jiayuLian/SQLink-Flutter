@@ -73,34 +73,41 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     _loadColumnsForSqlTables();
   }
 
-  /// 从 SQL 中提取反引号或裸标识符的表名，并异步加载列信息用于补全。
-  List<String> _extractSqlTables() {
+  /// 从 SQL 中提取表名（支持 `db.table`、反引号全限定、裸标识符），
+  /// 返回 表名 -> 库名(可空)。用于加载列信息做字段补全。
+  Map<String, String?> _extractSqlTables() {
     final sql = _sql.text;
-    final tables = <String>{};
+    final map = <String, String?>{};
     final regex = RegExp(
-      r'\b(from|join|update|into)\b\s+(`?)([^`\s;]+)\2',
+      r'\b(from|join|update|into)\b\s+([^\s;]+)',
       caseSensitive: false,
       multiLine: true,
     );
     for (final m in regex.allMatches(sql)) {
-      final raw = m.group(3)!;
-      // 处理 db.table 形式，只取表名。
-      final table = raw.split('.').last.replaceAll('`', '');
-      if (table.isNotEmpty) tables.add(table);
+      // 去掉反引号与结尾标点（如 FROM t, u 里的逗号）。
+      var raw = m.group(2)!.replaceAll('`', '');
+      raw = raw.replaceAll(RegExp(r'[,.].*$'), '');
+      if (raw.isEmpty) continue;
+      final parts = raw.split('.');
+      final db = parts.length >= 2 ? parts[0] : null;
+      final table = parts.last;
+      if (table.isNotEmpty) map[table] = db;
     }
-    return tables.toList();
+    return map;
   }
 
   Future<void> _loadColumnsForSqlTables() async {
     final tables = _extractSqlTables();
     if (tables.isEmpty) return;
-    final db = widget.db ?? '';
-    if (db.isEmpty) return;
-    for (final t in tables) {
-      if (_sqlTableColumns.containsKey(t)) continue;
+    for (final entry in tables.entries) {
+      final table = entry.key;
+      if (_sqlTableColumns.containsKey(table)) continue;
+      // 优先用 SQL 中显式限定的库名，否则回退到当前控制台所在库。
+      final db = entry.value ?? widget.db;
+      if (db == null || db.isEmpty) continue;
       try {
-        final cols = await widget.service.listColumns(db, t);
-        if (mounted) setState(() => _sqlTableColumns[t] = cols);
+        final cols = await widget.service.listColumns(db, table);
+        if (mounted) setState(() => _sqlTableColumns[table] = cols);
       } catch (_) {
         // 忽略无权限或不存在的表。
       }
