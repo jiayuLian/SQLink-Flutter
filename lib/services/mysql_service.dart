@@ -56,7 +56,7 @@ class MySQLService {
     final conn = _conn;
     if (conn == null) throw Exception('尚未连接');
     final List<ResultSetData> out = [];
-    var result = await conn.execute(sql);
+    IResultSet? result = await conn.execute(sql);
     while (result != null) {
       if (result.cols.isNotEmpty) {
         final columns = result.cols.map((c) => c.name).toList();

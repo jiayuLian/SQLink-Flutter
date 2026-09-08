@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/mysql_service.dart';
 import '../models/connection.dart' show ColumnInfo;
+import '../screens/table_data_screen.dart';
 
 class DatabaseBrowserScreen extends StatefulWidget {
   final MySQLService service;

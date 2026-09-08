@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/connection.dart' show ColumnInfo;
-import '../models/filter_condition.dart'
-    show
-        FilterCondition,
-        FilterOp,
-        FilterLogic,
-        buildWhereClause,
-        buildOrderBy;
+import '../models/filter_condition.dart';
 
 /// 结构化「筛选&排序」构建器（对齐 Swift 的 TableFilterView）。
 /// 以底部弹窗形式呈现：多条件（字段/运算符/值/AND·OR/启用）+ 排序；
