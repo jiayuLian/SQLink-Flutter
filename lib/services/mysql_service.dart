@@ -50,7 +50,7 @@ class MySQLService {
       password: password,
       databaseName: profile.database,
       secure: useTLS,
-      onBadCertificate: useTLS && trustSelfSigned ? (_) => true : null,
+      onBadCertificate: (_) => true,
     );
     // 对齐 Swift：底层 socket 读写超时设为 30 秒。
     await _conn!.connect().timeout(

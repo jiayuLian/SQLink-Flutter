@@ -21,7 +21,7 @@ class ResultGrid extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final headerColor = isDark ? Colors.teal.shade900 : Colors.teal.shade50;
     final nullColor = Colors.grey.shade500;
-    final pkBg = isDark ? Colors.amber.shade900.withOpacity(0.35) : Colors.amber.shade100;
+    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
     final pkIndex = primaryKey == null ? -1 : columns.indexOf(primaryKey!);
 
     return SingleChildScrollView(
@@ -59,7 +59,7 @@ class ResultGrid extends StatelessWidget {
     );
   }
 
-  Widget _buildCell(String col, String? v, bool isPk, Color? pkBg) {
+  DataCell _buildCell(String col, String? v, bool isPk, Color? pkBg) {
     return DataCell(
       Container(
         color: isPk ? pkBg : null,
