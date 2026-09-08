@@ -25,14 +25,7 @@ jobs:
             const report = fs.readFileSync('ANALYZE.md', 'utf8');
             const pubget = fs.readFileSync('PUBGET.md', 'utf8');
             const content = '## flutter pub get\n```\n' + pubget + '\n```\n\n## flutter analyze\n```\n' + report + '\n```';
-            const owner = context.repo.owner, repo = context.repo.repo;
-            const b = 'analyze-report';
-            try {
-              await github.rest.repos.getBranch({ owner, repo, branch: b });
-            } catch (e) {
-              const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/develop' });
-              await github.rest.git.createRef({ owner, repo, ref: 'refs/heads/' + b, sha: ref.data.object.sha });
-            }
+            const owner = context.repo.owner, repo = context.repo.repo, b = 'develop';
             let sha;
             try {
               const cur = await github.rest.repos.getContent({ owner, repo, path: 'ANALYZE.md', ref: b });
@@ -40,7 +33,7 @@ jobs:
             } catch (e) {}
             await github.rest.repos.createOrUpdateFileContents({
               owner, repo, path: 'ANALYZE.md', branch: b,
-              message: 'analyze report',
+              message: '[analyze-report] flutter analyze output',
               content: Buffer.from(content).toString('base64'),
               sha
             });
