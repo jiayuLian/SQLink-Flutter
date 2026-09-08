@@ -48,15 +48,11 @@ class MySQLService {
     }
     // 跟随连接编辑页的 SSL 开关：开 = TLS 加密，关 = 明文连接（与 Swift 一致）。
     final useTLS = profile.useTLS;
-    // 若主机是 IPv4 字面量，强制使用 IPv4 地址对象连接，避免 Dart Socket.connect
-    // 在部分 iOS 网络环境下解析到 IPv6 映射地址出现 errno 65 / No route to host。
-    dynamic host;
-    final ipv4 = _parseIpv4(hostRaw);
-    if (ipv4 != null) {
-      host = InternetAddress(ipv4, type: InternetAddressType.IPv4);
-    } else {
-      host = hostRaw;
-    }
+    // 直接传字符串 host 给底层 Socket.connect。mysql_client_plus 在 host 为字符串时走
+    // InternetAddress.lookup，iOS 的 NAT64 / IPv6-only 网络下会自动把 IPv4 字面量合成 IPv6
+    // 去连；若强制 InternetAddress(ip, type: IPv4) 反而绕过合成，在只有 IPv6 出口的 5G /
+    // 部分 WiFi 上会报 errno 65 (No route to host)。这是此前“强制 IPv4”修复在 NAT64 下的回归。
+    final host = hostRaw;
     try {
       _conn = await MySQLConnection.createConnection(
         host: host,
@@ -118,21 +114,6 @@ class MySQLService {
       }
       rethrow;
     }
-  }
-
-  /// 解析纯 IPv4 字面量地址；非 IPv4 返回 null，让 Socket 走域名解析。
-  static String? _parseIpv4(String host) {
-    final parts = host.split('.');
-    if (parts.length != 4) return null;
-    final nums = <int>[];
-    for (final p in parts) {
-      final n = int.tryParse(p);
-      if (n == null || n < 0 || n > 255) return null;
-      // 不允许前导零（如 01）。
-      if (p.length > 1 && p.startsWith('0')) return null;
-      nums.add(n);
-    }
-    return nums.join('.');
   }
 
   /// 把 mysql_client_plus 可能返回的 Uint8List（bytes）安全解码成字符串。
