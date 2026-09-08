@@ -33,8 +33,17 @@ jobs:
           flutter create --platforms=android --org com.jiayu sqlink
           cp -r sqlink/android .
           rm -rf sqlink
-      - name: Set app display name
-        run: sed -i 's/android:label="sqlink"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+      - name: Set app display name & network permissions
+        run: |
+          sed -i 's/android:label="sqlink"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+          # 确保 Android 有 INTERNET / NETWORK_STATE 权限；Flutter 模板通常已带，但 errno 13
+          # (Permission denied) 说明当前产物缺失，这里显式补入。
+          if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
+            sed -i 's|</manifest>|<uses-permission android:name="android.permission.INTERNET"/>\n</manifest>|' android/app/src/main/AndroidManifest.xml
+          fi
+          if ! grep -q 'android.permission.ACCESS_NETWORK_STATE' android/app/src/main/AndroidManifest.xml; then
+            sed -i 's|</manifest>|<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n</manifest>|' android/app/src/main/AndroidManifest.xml
+          fi
       - name: Set Android applicationId to com.jiayu.sqlinkFlutter
         run: |
           if [ -f android/app/build.gradle.kts ]; then
