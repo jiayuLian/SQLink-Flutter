@@ -545,6 +545,23 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                 label: Text(_running ? '执行中' : '运行'),
               ),
               const SizedBox(width: 8),
+              if (resultSets.isNotEmpty) ...[
+                IconButton(
+                  onPressed: _exportCsv,
+                  icon: const Icon(Icons.download),
+                  tooltip: '导出 CSV',
+                ),
+                IconButton(
+                  onPressed: _exportSql,
+                  icon: const Icon(Icons.table_view),
+                  tooltip: '导出 SQL',
+                ),
+              ],
+              IconButton(
+                onPressed: _showHistory,
+                icon: const Icon(Icons.history),
+                tooltip: 'SQL 历史',
+              ),
               if (_canEdit)
                 if (_editMode) ...[
                   TextButton.icon(

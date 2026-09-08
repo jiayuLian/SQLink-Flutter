@@ -1,0 +1,295 @@
+﻿2026-09-08T13:44:58.5158660Z Current runner version: '2.337.0'
+2026-09-08T13:44:58.5218367Z ##[group]Runner Image Provisioner
+2026-09-08T13:44:58.5220025Z Hosted Compute Agent
+2026-09-08T13:44:58.5221002Z Version: 20260828.587
+2026-09-08T13:44:58.5222116Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-08T13:44:58.5223577Z Build Date: 2026-08-28T16:44:25Z
+2026-09-08T13:44:58.5224726Z Worker ID: {06853291-e22a-4fac-a3d3-0a42462fcfad}
+2026-09-08T13:44:58.5227087Z Azure Region: eastus2
+2026-09-08T13:44:58.5228145Z ##[endgroup]
+2026-09-08T13:44:58.5230826Z ##[group]Operating System
+2026-09-08T13:44:58.5232437Z Ubuntu
+2026-09-08T13:44:58.5233579Z 24.04.4
+2026-09-08T13:44:58.5234465Z LTS
+2026-09-08T13:44:58.5236700Z ##[endgroup]
+2026-09-08T13:44:58.5237998Z ##[group]Runner Image
+2026-09-08T13:44:58.5239183Z Image: ubuntu-24.04
+2026-09-08T13:44:58.5239956Z Version: 20260831.293.1
+2026-09-08T13:44:58.5243835Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260831.293/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-08T13:44:58.5247165Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260831.293
+2026-09-08T13:44:58.5249318Z ##[endgroup]
+2026-09-08T13:44:58.5251994Z ##[group]GITHUB_TOKEN Permissions
+2026-09-08T13:44:58.5256877Z Contents: write
+2026-09-08T13:44:58.5257768Z Metadata: read
+2026-09-08T13:44:58.5258677Z ##[endgroup]
+2026-09-08T13:44:58.5261532Z Secret source: Actions
+2026-09-08T13:44:58.5263776Z Prepare workflow directory
+2026-09-08T13:44:58.5842955Z Prepare all required actions
+2026-09-08T13:44:58.5912216Z Getting action download info
+2026-09-08T13:44:58.7831217Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-09-08T13:44:58.9166790Z Download action repository 'subosito/flutter-action@v2' (SHA:1a449444c387b1966244ae4d4f8c696479add0b2)
+2026-09-08T13:44:59.2254404Z Getting action download info
+2026-09-08T13:44:59.3233370Z Download action repository 'actions/cache@v5' (SHA:caa296126883cff596d87d8935842f9db880ef25)
+2026-09-08T13:44:59.4957935Z Complete job name: analyze
+2026-09-08T13:44:59.5795892Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-08T13:44:59.5806441Z ##[group]Run actions/checkout@v4
+2026-09-08T13:44:59.5807357Z with:
+2026-09-08T13:44:59.5807971Z   repository: jiayuLian/SQLink-Flutter
+2026-09-08T13:44:59.5816410Z   token: ***
+2026-09-08T13:44:59.5816994Z   ssh-strict: true
+2026-09-08T13:44:59.5817591Z   ssh-user: git
+2026-09-08T13:44:59.5818197Z   persist-credentials: true
+2026-09-08T13:44:59.5818886Z   clean: true
+2026-09-08T13:44:59.5819487Z   sparse-checkout-cone-mode: true
+2026-09-08T13:44:59.5820236Z   fetch-depth: 1
+2026-09-08T13:44:59.5820838Z   fetch-tags: false
+2026-09-08T13:44:59.5821455Z   show-progress: true
+2026-09-08T13:44:59.5822113Z   lfs: false
+2026-09-08T13:44:59.5822721Z   submodules: false
+2026-09-08T13:44:59.5823356Z   set-safe-directory: true
+2026-09-08T13:44:59.5824062Z   allow-unsafe-pr-checkout: false
+2026-09-08T13:44:59.5825203Z ##[endgroup]
+2026-09-08T13:44:59.6877657Z Syncing repository: jiayuLian/SQLink-Flutter
+2026-09-08T13:44:59.6880930Z ##[group]Getting Git version info
+2026-09-08T13:44:59.6882708Z Working directory is '/home/runner/work/SQLink-Flutter/SQLink-Flutter'
+2026-09-08T13:44:59.6885516Z [command]/usr/bin/git version
+2026-09-08T13:44:59.6903290Z git version 2.55.0
+2026-09-08T13:44:59.6924065Z ##[endgroup]
+2026-09-08T13:44:59.6939129Z Temporarily overriding HOME='/home/runner/work/_temp/b4f81567-9979-4e8c-9f1e-5fb6f0a78904' before making global git config changes
+2026-09-08T13:44:59.6942927Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-08T13:44:59.6946317Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/SQLink-Flutter/SQLink-Flutter
+2026-09-08T13:44:59.6990039Z Deleting the contents of '/home/runner/work/SQLink-Flutter/SQLink-Flutter'
+2026-09-08T13:44:59.6996469Z ##[group]Initializing the repository
+2026-09-08T13:44:59.7002382Z [command]/usr/bin/git init /home/runner/work/SQLink-Flutter/SQLink-Flutter
+2026-09-08T13:44:59.7089362Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-08T13:44:59.7091883Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-08T13:44:59.7103703Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-08T13:44:59.7106445Z hint: call:
+2026-09-08T13:44:59.7107316Z hint:
+2026-09-08T13:44:59.7108428Z hint: 	git config --global init.defaultBranch <name>
+2026-09-08T13:44:59.7110100Z hint:
+2026-09-08T13:44:59.7111108Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-08T13:44:59.7112676Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-08T13:44:59.7113886Z hint:
+2026-09-08T13:44:59.7114479Z hint: 	git branch -m <name>
+2026-09-08T13:44:59.7115444Z hint:
+2026-09-08T13:44:59.7116397Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-08T13:44:59.7118532Z Initialized empty Git repository in /home/runner/work/SQLink-Flutter/SQLink-Flutter/.git/
+2026-09-08T13:44:59.7122142Z [command]/usr/bin/git remote add origin https://github.com/jiayuLian/SQLink-Flutter
+2026-09-08T13:44:59.7153609Z ##[endgroup]
+2026-09-08T13:44:59.7155455Z ##[group]Disabling automatic garbage collection
+2026-09-08T13:44:59.7157522Z [command]/usr/bin/git config --local gc.auto 0
+2026-09-08T13:44:59.7192057Z ##[endgroup]
+2026-09-08T13:44:59.7193617Z ##[group]Setting up auth
+2026-09-08T13:44:59.7199325Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-08T13:44:59.7237173Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-08T13:44:59.7579469Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-08T13:44:59.7620200Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-08T13:44:59.7882242Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-08T13:44:59.7921573Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-08T13:44:59.8162356Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-08T13:44:59.8203562Z ##[endgroup]
+2026-09-08T13:44:59.8204651Z ##[group]Fetching the repository
+2026-09-08T13:44:59.8214258Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +59b9738170d5bb3f17dc340a03c98d743f47ebb4:refs/remotes/origin/main
+2026-09-08T13:45:00.3590844Z From https://github.com/jiayuLian/SQLink-Flutter
+2026-09-08T13:45:00.3593093Z  * [new ref]         59b9738170d5bb3f17dc340a03c98d743f47ebb4 -> origin/main
+2026-09-08T13:45:00.3595761Z ##[endgroup]
+2026-09-08T13:45:00.3597092Z ##[group]Determining the checkout info
+2026-09-08T13:45:00.3598474Z ##[endgroup]
+2026-09-08T13:45:00.3599359Z [command]/usr/bin/git sparse-checkout disable
+2026-09-08T13:45:00.4514753Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-08T13:45:00.4570644Z ##[group]Checking out the ref
+2026-09-08T13:45:00.4575528Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-09-08T13:45:00.5033845Z Switched to a new branch 'main'
+2026-09-08T13:45:00.5129006Z branch 'main' set up to track 'origin/main'.
+2026-09-08T13:45:00.5132035Z ##[endgroup]
+2026-09-08T13:45:00.5458820Z [command]/usr/bin/git log -1 --format=%H
+2026-09-08T13:45:00.5522497Z 59b9738170d5bb3f17dc340a03c98d743f47ebb4
+2026-09-08T13:45:00.6012430Z ##[group]Run subosito/flutter-action@v2
+2026-09-08T13:45:00.6013787Z with:
+2026-09-08T13:45:00.6015155Z   channel: stable
+2026-09-08T13:45:00.6016299Z   architecture: X64
+2026-09-08T13:45:00.6017397Z   cache: false
+2026-09-08T13:45:00.6018513Z   pub-cache-path: default
+2026-09-08T13:45:00.6019737Z   dry-run: false
+2026-09-08T13:45:00.6020991Z   git-source: https://github.com/flutter/flutter.git
+2026-09-08T13:45:00.6022340Z ##[endgroup]
+2026-09-08T13:45:00.6097905Z ##[start-action display=Make yq tool available on Windows runners;id=__subosito_flutter-action.__run]
+2026-09-08T13:45:00.6126206Z ##[end-action id=__subosito_flutter-action.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-09-08T13:45:00.6131249Z ##[start-action display=Make setup script executable;id=__subosito_flutter-action.__run_2]
+2026-09-08T13:45:00.6195534Z ##[group]Run chmod +x "$GITHUB_ACTION_PATH/setup.sh"
+2026-09-08T13:45:00.6197111Z [36;1mchmod +x "$GITHUB_ACTION_PATH/setup.sh"[0m
+2026-09-08T13:45:00.6265408Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-08T13:45:00.6266905Z ##[endgroup]
+2026-09-08T13:45:00.6450864Z ##[end-action id=__subosito_flutter-action.__run_2;outcome=success;conclusion=success;duration_ms=31]
+2026-09-08T13:45:00.6456457Z ##[start-action display=Set action inputs;id=__subosito_flutter-action.flutter-action]
+2026-09-08T13:45:00.6516440Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh -p \
+2026-09-08T13:45:00.6517447Z [36;1m$GITHUB_ACTION_PATH/setup.sh -p \[0m
+2026-09-08T13:45:00.6518307Z [36;1m  -n '' \[0m
+2026-09-08T13:45:00.6519059Z [36;1m  -f '' \[0m
+2026-09-08T13:45:00.6519807Z [36;1m  -a 'X64' \[0m
+2026-09-08T13:45:00.6520558Z [36;1m  -k '' \[0m
+2026-09-08T13:45:00.6521328Z [36;1m  -c '' \[0m
+2026-09-08T13:45:00.6522061Z [36;1m  -l '' \[0m
+2026-09-08T13:45:00.6522806Z [36;1m  -d 'default' \[0m
+2026-09-08T13:45:00.6523694Z [36;1m  -g 'https://github.com/flutter/flutter.git' \[0m
+2026-09-08T13:45:00.6524615Z [36;1m  stable[0m
+2026-09-08T13:45:00.6568425Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-08T13:45:00.6569362Z ##[endgroup]
+2026-09-08T13:45:00.9869960Z ##[end-action id=__subosito_flutter-action.flutter-action;outcome=success;conclusion=success;duration_ms=341]
+2026-09-08T13:45:00.9877996Z ##[start-action display=Cache Flutter;id=__subosito_flutter-action.cache-flutter]
+2026-09-08T13:45:00.9889221Z ##[end-action id=__subosito_flutter-action.cache-flutter;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-09-08T13:45:00.9893897Z ##[start-action display=Cache pub dependencies;id=__subosito_flutter-action.cache-pub]
+2026-09-08T13:45:00.9919904Z ##[end-action id=__subosito_flutter-action.cache-pub;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-09-08T13:45:00.9924562Z ##[start-action display=Run setup script;id=__subosito_flutter-action.__run_3]
+2026-09-08T13:45:00.9983493Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh \
+2026-09-08T13:45:00.9984415Z [36;1m$GITHUB_ACTION_PATH/setup.sh \[0m
+2026-09-08T13:45:00.9985460Z [36;1m  -n '3.47.2' \[0m
+2026-09-08T13:45:00.9986227Z [36;1m  -a 'x64' \[0m
+2026-09-08T13:45:00.9987089Z [36;1m  -c '/opt/hostedtoolcache/flutter/stable-3.47.2-x64' \[0m
+2026-09-08T13:45:00.9988026Z [36;1m  -d '/home/runner/.pub-cache' \[0m
+2026-09-08T13:45:00.9988850Z [36;1m  stable[0m
+2026-09-08T13:45:01.0035958Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-08T13:45:01.0037181Z ##[endgroup]
+2026-09-08T13:45:01.1908877Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-09-08T13:45:01.1911072Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-09-08T13:45:01.1912449Z 
+2026-09-08T13:45:01.2718090Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-09-08T13:45:02.2495579Z   0 1501M    0  8259    0     0    99k      0  4:17:25 --:--:--  4:17:25   99k
+2026-09-08T13:45:03.2493455Z  20 1501M   20  311M    0     0   294M      0  0:00:05  0:00:01  0:00:04  294M
+2026-09-08T13:45:04.2496648Z  41 1501M   41  628M    0     0   305M      0  0:00:04  0:00:02  0:00:02  305M
+2026-09-08T13:45:05.2521983Z  65 1501M   65  980M    0     0   320M      0  0:00:04  0:00:03  0:00:01  320M
+2026-09-08T13:45:05.7748379Z  87 1501M   87 1312M    0     0   323M      0  0:00:04  0:00:04 --:--:--  322M
+2026-09-08T13:45:05.7749473Z 100 1501M  100 1501M    0     0   327M      0  0:00:04  0:00:04 --:--:--  333M
+2026-09-08T13:46:03.9575700Z ##[end-action id=__subosito_flutter-action.__run_3;outcome=success;conclusion=success;duration_ms=62964]
+2026-09-08T13:46:03.9648667Z ##[group]Run flutter pub get
+2026-09-08T13:46:03.9649039Z [36;1mflutter pub get[0m
+2026-09-08T13:46:03.9696855Z shell: /usr/bin/bash -e {0}
+2026-09-08T13:46:03.9697195Z env:
+2026-09-08T13:46:03.9697580Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.47.2-x64/flutter
+2026-09-08T13:46:03.9698045Z   PUB_CACHE: /home/runner/.pub-cache
+2026-09-08T13:46:03.9698400Z ##[endgroup]
+2026-09-08T13:46:08.4130067Z Resolving dependencies...
+2026-09-08T13:46:08.7266362Z Downloading packages...
+2026-09-08T13:46:12.0460896Z + args 2.7.0
+2026-09-08T13:46:12.0461348Z + async 2.13.1
+2026-09-08T13:46:12.0461937Z + boolean_selector 2.1.2
+2026-09-08T13:46:12.0462345Z + buffer 1.2.3
+2026-09-08T13:46:12.0462713Z + characters 1.4.1
+2026-09-08T13:46:12.0463246Z + clock 1.1.3
+2026-09-08T13:46:12.0463734Z + code_assets 2.0.0
+2026-09-08T13:46:12.0464191Z + collection 1.19.1
+2026-09-08T13:46:12.0464638Z + convert 3.1.2
+2026-09-08T13:46:12.0465459Z + cross_file 0.3.5+5
+2026-09-08T13:46:12.0465950Z + crypto 3.0.7
+2026-09-08T13:46:12.0466317Z + fake_async 1.3.3
+2026-09-08T13:46:12.0466688Z + ffi 2.2.0
+2026-09-08T13:46:12.0467070Z + file 7.0.1
+2026-09-08T13:46:12.0467450Z + fixnum 1.1.1
+2026-09-08T13:46:12.0467804Z + flutter 0.0.0 from sdk flutter
+2026-09-08T13:46:12.0468292Z + flutter_lints 5.0.0 (6.0.0 available)
+2026-09-08T13:46:12.0468840Z + flutter_secure_storage 9.2.4 (11.0.0 available)
+2026-09-08T13:46:12.0469468Z + flutter_secure_storage_linux 1.2.3 (3.0.2 available)
+2026-09-08T13:46:12.0470100Z + flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+2026-09-08T13:46:12.0470801Z + flutter_secure_storage_platform_interface 1.1.2 (2.0.3 available)
+2026-09-08T13:46:12.0471523Z + flutter_secure_storage_web 1.2.1 (2.1.1 available)
+2026-09-08T13:46:12.0472179Z + flutter_secure_storage_windows 3.1.2 (4.2.2 available)
+2026-09-08T13:46:12.0472910Z + flutter_test 0.0.0 from sdk flutter
+2026-09-08T13:46:12.0473397Z + flutter_web_plugins 0.0.0 from sdk flutter
+2026-09-08T13:46:12.0473889Z + hooks 2.2.0
+2026-09-08T13:46:12.0474251Z + jni 1.0.3
+2026-09-08T13:46:12.0474589Z + jni_flutter 1.0.3
+2026-09-08T13:46:12.0475174Z + jni_util 1.0.0
+2026-09-08T13:46:12.0475524Z + js 0.6.7 (0.7.2 available)
+2026-09-08T13:46:12.0475801Z + leak_tracker 11.0.2
+2026-09-08T13:46:12.0476083Z + leak_tracker_flutter_testing 3.0.10
+2026-09-08T13:46:12.0476394Z + leak_tracker_testing 3.0.2
+2026-09-08T13:46:12.0476667Z + lints 5.1.1 (6.1.0 available)
+2026-09-08T13:46:12.0476963Z + logging 1.3.0
+2026-09-08T13:46:12.0477210Z + matcher 0.12.20
+2026-09-08T13:46:12.0477504Z + material_color_utilities 0.13.0 (0.13.1 available)
+2026-09-08T13:46:12.0477856Z + meta 1.19.0
+2026-09-08T13:46:12.0503062Z + mime 2.1.0
+2026-09-08T13:46:12.0503488Z + mysql_client_plus 0.1.3
+2026-09-08T13:46:12.0503906Z + nested 1.0.0
+2026-09-08T13:46:12.0504254Z + objective_c 9.6.0
+2026-09-08T13:46:12.0504636Z + package_config 3.0.0
+2026-09-08T13:46:12.0505204Z + path 1.9.1
+2026-09-08T13:46:12.0505570Z + path_provider 2.1.6
+2026-09-08T13:46:12.0506003Z + path_provider_android 2.3.1
+2026-09-08T13:46:12.0506483Z + path_provider_foundation 2.6.0
+2026-09-08T13:46:12.0506948Z + path_provider_linux 2.2.2
+2026-09-08T13:46:12.0507423Z + path_provider_platform_interface 2.1.3
+2026-09-08T13:46:12.0507942Z + path_provider_windows 2.3.0
+2026-09-08T13:46:12.0508388Z + platform 3.2.0
+2026-09-08T13:46:12.0508789Z + plugin_platform_interface 2.1.8
+2026-09-08T13:46:12.0509277Z + pointycastle 4.0.0
+2026-09-08T13:46:12.0510016Z + provider 6.1.5+1
+2026-09-08T13:46:12.0510401Z + pub_semver 2.2.1
+2026-09-08T13:46:12.0510786Z + record_use 1.1.1
+2026-09-08T13:46:12.0511197Z + share_plus 10.1.4 (13.3.0 available)
+2026-09-08T13:46:12.0511794Z + share_plus_platform_interface 5.0.2 (7.2.0 available)
+2026-09-08T13:46:12.0512396Z + shared_preferences 2.5.5
+2026-09-08T13:46:12.0512865Z + shared_preferences_android 2.4.28
+2026-09-08T13:46:12.0513371Z + shared_preferences_foundation 2.5.7
+2026-09-08T13:46:12.0513882Z + shared_preferences_linux 2.4.1
+2026-09-08T13:46:12.0514679Z + shared_preferences_platform_interface 2.4.2
+2026-09-08T13:46:12.0515477Z + shared_preferences_web 2.4.3
+2026-09-08T13:46:12.0515962Z + shared_preferences_windows 2.4.1
+2026-09-08T13:46:12.0516489Z + sky_engine 0.0.0 from sdk flutter
+2026-09-08T13:46:12.0517028Z + source_span 1.10.2
+2026-09-08T13:46:12.0517425Z + stack_trace 1.12.2
+2026-09-08T13:46:12.0517812Z + stream_channel 2.1.4
+2026-09-08T13:46:12.0518226Z + string_scanner 1.4.1
+2026-09-08T13:46:12.0518636Z + term_glyph 1.2.2
+2026-09-08T13:46:12.0519036Z + test_api 0.7.12 (0.7.14 available)
+2026-09-08T13:46:12.0519536Z + tuple 2.0.2
+2026-09-08T13:46:12.0519918Z + typed_data 1.4.0
+2026-09-08T13:46:12.0520311Z + url_launcher_linux 3.2.3
+2026-09-08T13:46:12.0520782Z + url_launcher_platform_interface 2.3.2
+2026-09-08T13:46:12.0521310Z + url_launcher_web 2.4.3
+2026-09-08T13:46:12.0521737Z + url_launcher_windows 3.1.6
+2026-09-08T13:46:12.0522169Z + uuid 4.6.0
+2026-09-08T13:46:12.0522527Z + vector_math 2.4.2
+2026-09-08T13:46:12.0522936Z + vm_service 15.3.0
+2026-09-08T13:46:12.0523333Z + web 1.1.1
+2026-09-08T13:46:12.0523702Z + win32 5.15.0 (6.4.0 available)
+2026-09-08T13:46:12.0524172Z + xdg_directories 1.1.0
+2026-09-08T13:46:12.0524572Z + yaml 3.1.4
+2026-09-08T13:46:12.0525202Z Changed 85 dependencies!
+2026-09-08T13:46:12.0525864Z 14 packages have newer versions incompatible with dependency constraints.
+2026-09-08T13:46:12.0526649Z Try `flutter pub outdated` for more information.
+2026-09-08T13:46:12.1963955Z Upgrading analysis_options.yaml to exclude build and platform directories.
+2026-09-08T13:46:12.2193740Z ##[group]Run flutter analyze
+2026-09-08T13:46:12.2194132Z [36;1mflutter analyze[0m
+2026-09-08T13:46:12.2239023Z shell: /usr/bin/bash -e {0}
+2026-09-08T13:46:12.2239359Z env:
+2026-09-08T13:46:12.2239746Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.47.2-x64/flutter
+2026-09-08T13:46:12.2240230Z   PUB_CACHE: /home/runner/.pub-cache
+2026-09-08T13:46:12.2240563Z ##[endgroup]
+2026-09-08T13:46:24.2835644Z Analyzing SQLink-Flutter...                                     
+2026-09-08T13:46:24.2841659Z 
+2026-09-08T13:46:24.2877993Z warning • The declaration '_exportCsv' isn't referenced. Try removing the declaration of '_exportCsv' • lib/screens/query_console_screen.dart:389:8 • unused_element
+2026-09-08T13:46:24.2880430Z warning • The declaration '_exportSql' isn't referenced. Try removing the declaration of '_exportSql' • lib/screens/query_console_screen.dart:400:8 • unused_element
+2026-09-08T13:46:24.2882876Z warning • The declaration '_showHistory' isn't referenced. Try removing the declaration of '_showHistory' • lib/screens/query_console_screen.dart:411:8 • unused_element
+2026-09-08T13:46:24.2892263Z 
+2026-09-08T13:46:24.2956654Z 3 issues found. (ran in 11.6s)
+2026-09-08T13:46:24.3064487Z ##[error]Process completed with exit code 1.
+2026-09-08T13:46:24.3261547Z Post job cleanup.
+2026-09-08T13:46:24.3340380Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-08T13:46:24.3342092Z Post job cleanup.
+2026-09-08T13:46:24.4366560Z [command]/usr/bin/git version
+2026-09-08T13:46:24.4413940Z git version 2.55.0
+2026-09-08T13:46:24.4456185Z Temporarily overriding HOME='/home/runner/work/_temp/66678c74-10ea-48c7-bb01-47c669fee90b' before making global git config changes
+2026-09-08T13:46:24.4458017Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-08T13:46:24.4465114Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/SQLink-Flutter/SQLink-Flutter
+2026-09-08T13:46:24.4510468Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-08T13:46:24.4551630Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-08T13:46:24.4848359Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-08T13:46:24.4880352Z http.https://github.com/.extraheader
+2026-09-08T13:46:24.4893677Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-09-08T13:46:24.4933623Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-08T13:46:24.5296242Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-08T13:46:24.5396532Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-08T13:46:24.5937328Z Cleaning up orphan processes
+2026-09-08T13:46:24.6282848Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
