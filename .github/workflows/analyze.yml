@@ -4,12 +4,13 @@ on:
   push:
     branches: [develop]
 
-# 防止机器人回写报告时无限触发：回写提交信息含 [analyze-report] 时跳过。
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   analyze:
     if: "!contains(github.event.head_commit.message, '[analyze-report]')"
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +19,25 @@ jobs:
           channel: stable
       - run: flutter pub get > PUBGET.md 2>&1 || true
       - run: flutter analyze > ANALYZE.md 2>&1 || true
-      - name: 回写报告到仓库（便于本地读取，不打包）
-        run: |
-          git config user.email "bot@noreply.github.com"
-          git config user.name "analyze-bot"
-          git add ANALYZE.md PUBGET.md
-          git commit -m "[analyze-report] flutter analyze / pub get 报告" || echo "no changes"
-          git push
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('ANALYZE.md', 'utf8');
+            const pubget = fs.readFileSync('PUBGET.md', 'utf8');
+            const body = '## flutter pub get\n```\n' + pubget + '\n```\n\n## flutter analyze\n```\n' + report + '\n```';
+            const title = 'Flutter Analyze Report';
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open'
+            });
+            const existing = issues.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo, title, body
+              });
+            }
