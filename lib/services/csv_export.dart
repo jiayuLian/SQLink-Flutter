@@ -15,3 +15,25 @@ String _cell(String? v) {
   }
   return v;
 }
+
+/// SQL (INSERT) 导出，对齐 Swift ExportUtils.buildSQL。
+/// 生成形如：INSERT INTO `t` (`a`,`b`) VALUES ('1','x'), ('2','y');
+String toSql(
+  String insertInto,
+  List<String> columns,
+  List<Map<String, String?>> rows,
+) {
+  final escId = (String s) => '`${s.replaceAll('`', '``')}`';
+  final quote = (String? v) {
+    if (v == null) return 'NULL';
+    final escaped = v.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+    return "'$escaped'";
+  };
+  final cols = columns.map(escId).join(', ');
+  final lines = rows.map((r) {
+    final vals = columns.map((c) => quote(r[c])).join(', ');
+    return 'INSERT INTO ${escId(insertInto)} ($cols) VALUES ($vals);';
+  });
+  return lines.join('\n');
+}
+

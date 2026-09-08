@@ -25,6 +25,11 @@ class MySQLService {
   MySQLService(this.profile);
 
   Future<void> connect(String password) async {
+    // 若已有连接（理论上每个 ConnectionHomeScreen 只连一次），先关闭旧的，避免泄漏。
+    if (_conn != null) {
+      _conn!.close();
+      _conn = null;
+    }
     _conn = await MySQLConnection.createConnection(
       host: profile.host,
       port: profile.port,
@@ -35,7 +40,15 @@ class MySQLService {
       onBadCertificate:
           profile.useTLS && profile.trustSelfSigned ? (_) => true : null,
     );
-    await _conn!.connect();
+    // 对齐 Swift：底层 socket 读写超时设为 30 秒。
+    await _conn!.connect().timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        _conn?.close();
+        _conn = null;
+        throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
+      },
+    );
   }
 
   /// 执行任意 SQL（支持多语句），返回全部结果集。
@@ -54,7 +67,9 @@ class MySQLService {
         }).toList();
         out.add(ResultSetData.result(columns, rows));
       } else {
-        out.add(ResultSetData.ok(result.affectedRows.toInt()));
+        // affectedRows 在 mysql_client_plus 中可能为 BigInt 或 int，
+        // 用 toString+parse 兼容两种类型，避免编译期不确定性。
+        out.add(ResultSetData.ok(int.parse(result.affectedRows.toString())));
       }
       result = result.next;
     }
@@ -65,10 +80,23 @@ class MySQLService {
   Future<List<String>> listDatabases() async {
     final r = await execute('SHOW DATABASES');
     if (r.isEmpty || !r.first.isResultSet) return [];
+    // 对齐 Swift：返回全部数据库（含 information_schema/mysql 等系统库），不做过滤。
     return r.first.rows
         .map((m) => m.values.first ?? '')
         .where((s) => s.isNotEmpty)
         .toList();
+  }
+
+  /// 返回建表语句（SHOW CREATE TABLE 的第 2 列）。对齐 Swift 的 `showCreateTable`。
+  Future<String> showCreateTable(String db, String table) async {
+    final r = await execute(
+        'SHOW CREATE TABLE `${_esc(db)}`.`${_esc(table)}`');
+    if (r.isEmpty || !r.first.isResultSet) return '';
+    final row = r.first.rows.firstOrNull;
+    if (row == null) return '';
+    // 第 0 列为表名，第 1 列为建表语句（对齐 Swift：row.count > 1 ? row[1] : ""）。
+    final vals = row.values.toList();
+    return vals.length > 1 ? (vals[1] ?? '') : '';
   }
 
   Future<List<Map<String, String>>> listTables(String db) async {

@@ -98,7 +98,7 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
         ),
         body: TabBarView(
           children: [
-            QueryConsoleScreen(service: _service),
+            QueryConsoleScreen(service: _service, db: widget.profile.database),
             DatabaseBrowserScreen(service: _service),
           ],
         ),

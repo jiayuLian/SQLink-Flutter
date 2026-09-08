@@ -35,6 +35,8 @@ jobs:
           rm -rf sqlinkflutter
       - name: Set app display name
         run: sed -i 's/android:label="sqlinkflutter"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+      - name: Bump minSdkVersion to 23 (flutter_secure_storage 的 encryptedSharedPreferences 需 API 23+)
+        run: sed -i 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
       - name: Build release APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
@@ -57,7 +59,7 @@ jobs:
           cp -r sqlinkflutter/ios .
           rm -rf sqlinkflutter
       - name: Set app display name
-        run: sed -i '' 's|<string>sqlinkflutter</string>|<string>SQLink</string>|' ios/Runner/Info.plist
+        run: sed -i '' 's/$(PRODUCT_NAME)/SQLink/g' ios/Runner/Info.plist
       - name: Install CocoaPods
         run: sudo gem install cocoapods
       - name: Build iOS (no codesign)

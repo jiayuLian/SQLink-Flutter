@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 /// 连接配置（密码不在此处，单独存安全存储）。
 class ConnectionProfile {
   final String id;
@@ -42,6 +40,27 @@ class ConnectionProfile {
         database: j['database'] ?? '',
         useTLS: j['useTLS'] ?? true,
         trustSelfSigned: j['trustSelfSigned'] ?? true,
+      );
+
+  /// 浅拷贝：编辑界面操作副本，避免直接污染 store 里已存的连接对象。
+  ConnectionProfile copyWith({
+    String? name,
+    String? host,
+    int? port,
+    String? user,
+    String? database,
+    bool? useTLS,
+    bool? trustSelfSigned,
+  }) =>
+      ConnectionProfile(
+        id: id,
+        name: name ?? this.name,
+        host: host ?? this.host,
+        port: port ?? this.port,
+        user: user ?? this.user,
+        database: database ?? this.database,
+        useTLS: useTLS ?? this.useTLS,
+        trustSelfSigned: trustSelfSigned ?? this.trustSelfSigned,
       );
 }
 

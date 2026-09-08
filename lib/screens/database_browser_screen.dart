@@ -55,12 +55,18 @@ class _DatabaseTile extends StatefulWidget {
 class _DatabaseTileState extends State<_DatabaseTile> {
   List<Map<String, String>>? _tables;
   bool _loading = false;
+  String? _error;
 
   Future<void> _load() async {
-    if (_tables != null) return;
-    setState(() => _loading = true);
+    if (_loading || _tables != null) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       _tables = await widget.service.listTables(widget.db);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -75,6 +81,11 @@ class _DatabaseTileState extends State<_DatabaseTile> {
       children: [
         if (_loading)
           const ListTile(title: Text('加载表…'))
+        else if (_error != null)
+          ListTile(
+            title: Text('加载失败：$_error', style: const TextStyle(color: Colors.red)),
+            onTap: _load,
+          )
         else if (_tables == null)
           const SizedBox.shrink()
         else if (_tables!.isEmpty)
@@ -104,15 +115,55 @@ class _TableTile extends StatefulWidget {
 class _TableTileState extends State<_TableTile> {
   List<ColumnInfo>? _columns;
   bool _loading = false;
+  String? _error;
 
   Future<void> _load() async {
-    if (_columns != null) return;
-    setState(() => _loading = true);
+    if (_loading || _columns != null) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       _columns = await widget.service.listColumns(widget.db, widget.table['name']!);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// 对齐 Swift 表详情的「查看建表 SQL」：弹窗展示 SHOW CREATE TABLE 结果（等宽字体）。
+  Future<void> _showDDL(BuildContext context) async {
+    final name = widget.table['name'] ?? '';
+    String ddl;
+    try {
+      ddl = await widget.service.showCreateTable(widget.db, name);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('加载建表 SQL 失败：$e')));
+      }
+      return;
+    }
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('建表 SQL · $name'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            ddl.isEmpty ? '（无建表语句）' : ddl,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -136,8 +187,18 @@ class _TableTileState extends State<_TableTile> {
             ),
           ),
         ),
+        ListTile(
+          leading: const Icon(Icons.schema),
+          title: const Text('查看建表 SQL'),
+          onTap: () => _showDDL(context),
+        ),
         if (_loading)
           const ListTile(title: Text('加载列…'))
+        else if (_error != null)
+          ListTile(
+            title: Text('加载失败：$_error', style: const TextStyle(color: Colors.red)),
+            onTap: _load,
+          )
         else if (_columns == null)
           const SizedBox.shrink()
         else

@@ -19,7 +19,8 @@ const _keywords = [
 
 class QueryConsoleScreen extends StatefulWidget {
   final MySQLService service;
-  const QueryConsoleScreen({super.key, required this.service});
+  final String? db;
+  const QueryConsoleScreen({super.key, required this.service, this.db});
 
   @override
   State<QueryConsoleScreen> createState() => _QueryConsoleScreenState();
@@ -30,6 +31,23 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   List<ResultSetData>? _outcomes;
   String? _error;
   bool _running = false;
+  List<String> _tables = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTables();
+  }
+
+  Future<void> _loadTables() async {
+    if (widget.db == null || widget.db!.isEmpty) return;
+    try {
+      final list = await widget.service.listTables(widget.db!);
+      if (mounted) setState(() => _tables = list.map((m) => m['name'] ?? '').toList());
+    } catch (_) {
+      // 表名仅用于补全提示，失败忽略。
+    }
+  }
 
   String get _currentWord {
     final t = _sql.text;
@@ -41,12 +59,24 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   List<String> get _suggestions {
     final w = _currentWord.toUpperCase();
     if (w.isEmpty) return [];
-    return _keywords.where((k) => k.startsWith(w) && k != w).toList();
+    final pool = <String>[..._keywords, ..._tables];
+    final seen = <String>{};
+    final out = <String>[];
+    for (final item in pool) {
+      final u = item.toUpperCase();
+      if (u.startsWith(w) && !seen.contains(u) && u != w) {
+        seen.add(u);
+        out.add(item);
+      }
+    }
+    return out;
   }
 
   Future<void> _run() async {
     final sql = _sql.text.trim();
     if (sql.isEmpty) return;
+    // 在 await 之前同步读取 settings，避免 widget 卸载后访问 context 抛异常。
+    final settings = Provider.of<AppSettings>(context, listen: false);
     setState(() {
       _running = true;
       _error = null;
@@ -54,7 +84,6 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     });
     try {
       final outs = await widget.service.execute(sql);
-      final settings = Provider.of<AppSettings>(context, listen: false);
       if (settings.autoSaveSQL) await settings.addHistory(sql);
       if (mounted) setState(() => _outcomes = outs);
     } catch (e) {
@@ -80,6 +109,17 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     final csv = toCsv(first.columns, first.rows);
     Share.shareXFiles(
       [XFile.fromData(utf8.encode(csv), name: 'sqlink_result.csv', mimeType: 'text/csv')],
+      subject: 'SQLink 查询结果',
+    );
+  }
+
+  void _exportSql() {
+    final rs = _outcomes?.where((o) => o.isResultSet).toList();
+    if (rs == null || rs.isEmpty) return;
+    final first = rs.first;
+    final sql = toSql('query_result', first.columns, first.rows);
+    Share.shareXFiles(
+      [XFile.fromData(utf8.encode(sql), name: 'sqlink_result.sql', mimeType: 'text/sql')],
       subject: 'SQLink 查询结果',
     );
   }
@@ -172,12 +212,15 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                 onPressed: _showHistory,
               ),
               const Spacer(),
-              IconButton(
+              PopupMenuButton<String>(
                 icon: const Icon(Icons.download),
-                tooltip: '导出 CSV',
-                onPressed: (_outcomes?.any((o) => o.isResultSet) ?? false)
-                    ? _exportCsv
-                    : null,
+                tooltip: '导出',
+                enabled: _outcomes?.any((o) => o.isResultSet) ?? false,
+                onSelected: (v) => v == 'sql' ? _exportSql() : _exportCsv(),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'csv', child: Text('导出 CSV')),
+                  PopupMenuItem(value: 'sql', child: Text('导出 SQL')),
+                ],
               ),
             ],
           ),

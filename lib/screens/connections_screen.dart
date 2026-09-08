@@ -102,13 +102,23 @@ class _ConnectionCard extends StatelessWidget {
             '${profile.database.isNotEmpty ? ' / ${profile.database}' : ''}'
             '${profile.useTLS ? ' · TLS' : ' · 明文'}',
           ),
-          trailing: IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ConnectionEditScreen(profile: profile),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (profile.useTLS)
+                const Tooltip(
+                  message: '已启用 TLS/SSL 加密',
+                  child: Icon(Icons.lock, size: 18, color: Colors.green),
+                ),
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ConnectionEditScreen(profile: profile),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
           onTap: () => _connect(context),
         ),
