@@ -410,6 +410,22 @@ class _TableDataScreenState extends State<TableDataScreen> {
                         }
                       : null,
                 ),
+                PopupMenuButton<int>(
+                  icon: const Icon(Icons.view_column),
+                  tooltip: '每页条数',
+                  initialValue: ps,
+                  onSelected: (v) {
+                    _pageSize = v;
+                    _offset = 0;
+                    _load();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 50, child: Text('每页 50 条')),
+                    PopupMenuItem(value: 100, child: Text('每页 100 条')),
+                    PopupMenuItem(value: 200, child: Text('每页 200 条')),
+                    PopupMenuItem(value: 500, child: Text('每页 500 条')),
+                  ],
+                ),
               ],
             ),
           ),

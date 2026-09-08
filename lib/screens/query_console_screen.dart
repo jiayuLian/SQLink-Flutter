@@ -163,6 +163,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                   controller: _sql,
                   maxLines: 4,
                   minLines: 2,
+                  // 等宽字体（对齐 Swift TextEditor .monospaced）。
+                  style: const TextStyle(fontFamily: 'monospace'),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     hintText: '输入 SQL，例如 SELECT 1',

@@ -4,7 +4,8 @@ import 'package:flutter/services.dart';
 /// 查询结果表格（Navicat 风格，对齐 Swift ResultGridView）。
 /// 主键列（PRI/UNI）以 🔑 标记并以主题色高亮；单元格等宽字体、定宽列、隔行底色；
 /// 点按单元格弹出完整值并支持复制。
-class ResultGrid extends StatelessWidget {
+/// 支持双指捏合缩放（0.6~3.0）+ 双击复位（对齐 Swift gridScale 手势）。
+class ResultGrid extends StatefulWidget {
   final List<String> columns;
   final List<Map<String, String?>> rows;
 
@@ -19,10 +20,19 @@ class ResultGrid extends StatelessWidget {
   });
 
   @override
+  State<ResultGrid> createState() => _ResultGridState();
+}
+
+class _ResultGridState extends State<ResultGrid> {
+  // 表格缩放（对齐 Swift gridScale）。
+  double _scale = 1.0;
+  double _startScale = 1.0;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkIndex = primaryKey == null ? -1 : columns.indexOf(primaryKey!);
+    final pkIndex = widget.primaryKey == null ? -1 : widget.columns.indexOf(widget.primaryKey!);
     const minW = 80.0;
     const maxW = 160.0;
     const mono = TextStyle(fontFamily: 'monospace');
@@ -74,8 +84,8 @@ class ResultGrid extends StatelessWidget {
           color: scheme.primary.withValues(alpha: 0.10),
           child: const Text('#', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
-        for (var ci = 0; ci < columns.length; ci++)
-          headerCell((ci == pkIndex ? '🔑 ' : '') + columns[ci], ci == pkIndex),
+        for (var ci = 0; ci < widget.columns.length; ci++)
+          headerCell((ci == pkIndex ? '🔑 ' : '') + widget.columns[ci], ci == pkIndex),
       ],
     );
 
@@ -83,7 +93,7 @@ class ResultGrid extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
-        for (var ri = 0; ri < rows.length; ri++)
+        for (var ri = 0; ri < widget.rows.length; ri++)
           Row(
             children: [
               Container(
@@ -95,25 +105,40 @@ class ResultGrid extends StatelessWidget {
                 child: Text('${ri + 1}',
                     style: TextStyle(color: Colors.grey.shade500)),
               ),
-              for (var ci = 0; ci < columns.length; ci++)
-                cell(rows[ri][columns[ci]], ci == pkIndex, ri, ci),
+              for (var ci = 0; ci < widget.columns.length; ci++)
+                cell(widget.rows[ri][widget.columns[ci]], ci == pkIndex, ri, ci),
             ],
           ),
       ],
     );
 
-    if (rows.isEmpty) {
+    if (widget.rows.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Text('无结果集', style: TextStyle(color: Colors.grey)),
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
+    return GestureDetector(
+      // 双指捏合缩放（对齐 Swift MagnificationGesture）。
+      onScaleStart: (_) => _startScale = _scale,
+      onScaleUpdate: (d) {
+        if (d.pointerCount >= 2) {
+          setState(() => _scale = (_startScale * d.scale).clamp(0.6, 3.0));
+        }
+      },
+      // 双击复位（对齐 Swift onTapGesture(count: 2) { gridScale = 1 }）。
+      onDoubleTap: () => setState(() => _scale = 1.0),
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: body,
+        scrollDirection: Axis.vertical,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Transform.scale(
+            scale: _scale,
+            alignment: Alignment.topLeft,
+            child: body,
+          ),
+        ),
       ),
     );
   }
