@@ -59,6 +59,7 @@ jobs:
         with:
           name: apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
 
   build_ipa:
     needs: analyze
@@ -97,6 +98,7 @@ jobs:
         with:
           name: ipa
           path: build/ios/iphoneos/SQLink.ipa
+          retention-days: 7
 
   release:
     needs: [build_apk, build_ipa]
@@ -110,11 +112,26 @@ jobs:
         with:
           name: ipa
           path: ipa
-      - name: Create GitHub Release
+      - name: Remove previous latest release & tag (keep only one version)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="latest"
+          rel_id=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          if [ -n "$rel_id" ]; then
+            echo "deleting old release $rel_id"
+            curl -s -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$rel_id"
+          fi
+          curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$TAG" || true
+      - name: Create GitHub Release (single latest version)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Build v${{ github.run_number }}
+          tag_name: latest
+          name: SQLink latest
           files: |
             apk/app-release.apk
             ipa/SQLink.ipa
