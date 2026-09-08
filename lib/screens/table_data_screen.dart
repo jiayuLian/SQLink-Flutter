@@ -397,7 +397,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
     final cols = _data!.columns;
     final pkIndex = _pkIndex;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkBg = isDark ? Colors.amber.shade900.withOpacity(0.35) : Colors.amber.shade100;
+    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(

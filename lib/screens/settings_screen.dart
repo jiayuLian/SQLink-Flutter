@@ -15,7 +15,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           const Text('外观', style: TextStyle(fontWeight: FontWeight.bold)),
           DropdownButtonFormField<ThemeMode>(
-            value: settings.themeMode,
+            initialValue: settings.themeMode,
             decoration: const InputDecoration(labelText: '主题'),
             items: const [
               DropdownMenuItem(value: ThemeMode.system, child: Text('跟随系统')),
