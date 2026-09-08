@@ -25,9 +25,9 @@ String toSql(
 ) {
   final escId = (String s) => '`${s.replaceAll('`', '``')}`';
   final quote = (String? v) {
-    // 对齐 Swift ExportUtils.buildSQL：空字符串与 NULL 统一导出为 NULL
-    // （注意：重导入时 '' 会变成 NULL，这是 Swift 的既有行为，这里保持一致）。
-    if (v == null || v.isEmpty) return 'NULL';
+    // 正确性优先：仅真正的 NULL 导出为 NULL；空字符串 '' 导出为 ''（而非 NULL），
+    // 否则重导入时空串会变成 NULL，造成数据失真。
+    if (v == null) return 'NULL';
     final escaped = v.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
     return "'$escaped'";
   };
