@@ -142,6 +142,8 @@ class _FilterBuilderState extends State<FilterBuilder> {
               children: [
                 TextButton(
                   onPressed: () {
+                    for (final c in _controllers.values) c.dispose();
+                    _controllers.clear();
                     _drafts = [];
                     _sortField = '';
                     _sortDir = 'ASC';

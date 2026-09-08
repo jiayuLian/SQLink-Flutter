@@ -48,6 +48,10 @@ class _TableDataScreenState extends State<TableDataScreen> {
   String? _editError;
   bool _saving = false;
 
+  // 编辑态单元格输入框控制器，按 "$ri-$ci" 持有，避免每次按键 setState 重建
+  // DataTable 导致 TextFormField(initialValue) 光标跳到末尾（同筛选器焦点问题）。
+  final Map<String, TextEditingController> _editControllers = {};
+
   late int _pageSize;
 
   /// 主键：优先 PRI，其次 UNI（对齐 Swift 的 primaryKey 判定）。
@@ -184,6 +188,14 @@ class _TableDataScreenState extends State<TableDataScreen> {
     _editing = _data!.rows
         .map((r) => _data!.columns.map((c) => r[c]).toList())
         .toList();
+    // 为每个可编辑单元格建立控制器，初值取自当前行数据。
+    _editControllers.clear();
+    for (var ri = 0; ri < _editing.length; ri++) {
+      for (var ci = 0; ci < _data!.columns.length; ci++) {
+        _editControllers['$ri-$ci'] =
+            TextEditingController(text: _editing[ri][ci] ?? '');
+      }
+    }
     _hasChanges = false;
     _editMessage = null;
     _editError = null;
@@ -193,6 +205,8 @@ class _TableDataScreenState extends State<TableDataScreen> {
   void _cancelEdit() {
     _editMode = false;
     _editing = [];
+    for (final c in _editControllers.values) c.dispose();
+    _editControllers.clear();
     _hasChanges = false;
     _editMessage = null;
     _editError = null;
@@ -201,7 +215,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
 
   String _escId(String id) => '`${id.replaceAll('`', '``')}`';
 
-  String _quoteValue(String v) => "'${v.replaceAll("'", "''")}'";
+  // 正确性优先：先转义反斜杠再转义单引号（与 csv_export.toSql 一致），
+  // 否则含 \ 或 \' 的单元格值在 MySQL 默认 SQL 模式下会破坏 UPDATE 语句。
+  String _quoteValue(String v) => "'${v.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'";
 
   Future<void> _saveEdits() async {
     final pk = _primaryKey();
@@ -240,6 +256,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
           _editError = null;
         });
       }
+      // 编辑态结束，释放所有单元格控制器，避免泄漏。
+      for (final c in _editControllers.values) c.dispose();
+      _editControllers.clear();
       await _load();
     } catch (e) {
       if (mounted) setState(() => _editError = '保存失败：$e');
@@ -437,7 +456,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
                   SizedBox(
                     width: 140,
                     child: TextFormField(
-                      initialValue: _editing[ri][ci] ?? '',
+                      controller: _editControllers['$ri-$ci'],
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         isCollapsed: true,

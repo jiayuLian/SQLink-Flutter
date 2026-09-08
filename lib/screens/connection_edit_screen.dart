@@ -34,9 +34,12 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
           user: 'root',
           database: '',
         );
-    // TLS 始终开启、始终信任自签名证书，无需用户操作。
-    _p.useTLS = true;
-    _p.trustSelfSigned = true;
+    // 新建连接：TLS 默认开启、始终信任自签名证书（与 Swift 一致）。
+    // 编辑已有连接：尊重已存值，避免把用户显式选了明文的连接偷偷改回加密。
+    if (widget.profile == null) {
+      _p.useTLS = true;
+      _p.trustSelfSigned = true;
+    }
     // 编辑时若已存密码，预填到密码框以便测试/保存（与 Swift 一致）。
     if (widget.profile != null) {
       SecureStorage.getPassword(_p.id).then((pw) {
@@ -80,15 +83,14 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
       _testing = true;
       _testMessage = null;
     });
+    final svc = MySQLService(_p);
     try {
       final pw = _passwordController.text.isNotEmpty
           ? _passwordController.text
           : (widget.profile != null
               ? (await SecureStorage.getPassword(_p.id)) ?? ''
               : '');
-      final svc = MySQLService(_p);
       await svc.connect(pw);
-      svc.close();
       if (mounted) {
         setState(() {
           _testOk = true;
@@ -103,6 +105,8 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
         });
       }
     } finally {
+      // 无论成功失败都关闭连接，避免失败时残留半开 socket。
+      svc.close();
       if (mounted) setState(() => _testing = false);
     }
   }
