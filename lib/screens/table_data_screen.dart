@@ -86,6 +86,13 @@ class _TableDataScreenState extends State<TableDataScreen> {
     _pageSize = Provider.of<AppSettings>(context, listen: false).pageSize;
   }
 
+  @override
+  void dispose() {
+    for (final c in _editControllers.values) c.dispose();
+    _editControllers.clear();
+    super.dispose();
+  }
+
   Future<void> _loadColumns() async {
     try {
       final cols = await widget.service.listColumns(widget.db, widget.table);
