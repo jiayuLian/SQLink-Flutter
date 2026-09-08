@@ -76,7 +76,7 @@ class MySQLService {
           throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
         },
       );
-    } on SocketException catch (e, s) {
+    } on SocketException catch (e) {
       _conn?.close();
       _conn = null;
       final msg = e.message.toLowerCase();
@@ -100,7 +100,7 @@ class MySQLService {
       _conn?.close();
       _conn = null;
       throw Exception('SSL/TLS 握手失败：${e.message}，请确认服务器已开启 SSL 或关闭"使用 SSL 连接"');
-    } on MySQLClientException catch (e) {
+    } catch (e) {
       _conn?.close();
       _conn = null;
       final msg = e.toString().toLowerCase();
@@ -113,10 +113,9 @@ class MySQLService {
       if (msg.contains('unknown database')) {
         throw Exception('默认数据库不存在，请检查"默认数据库"填写是否正确');
       }
-      rethrow;
-    } catch (e) {
-      _conn?.close();
-      _conn = null;
+      if (msg.contains('handshake') || msg.contains('certificate') || msg.contains('tls')) {
+        throw Exception('SSL/TLS 握手失败，请确认服务器已开启 SSL 或关闭"使用 SSL 连接"');
+      }
       rethrow;
     }
   }
