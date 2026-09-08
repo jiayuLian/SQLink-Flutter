@@ -33,7 +33,6 @@ class MySQLService {
     }
     // TLS 始终开启、自动信任自签名证书，保持与 Swift 一致。
     final useTLS = true;
-    final trustSelfSigned = true;
     // 若主机是 IPv4 字面量，强制使用 IPv4 地址对象连接，避免 Dart Socket.connect
     // 在部分 iOS 网络环境下解析到 IPv6 映射地址出现 errno 65 / No route to host。
     dynamic host;
