@@ -36,7 +36,12 @@ jobs:
       - name: Set app display name
         run: sed -i 's/android:label="sqlinkflutter"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
       - name: Bump minSdkVersion to 23 (flutter_secure_storage 的 encryptedSharedPreferences 需 API 23+)
-        run: sed -i 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i -E 's/minSdk = .*/minSdk = 23/' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i -E 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
+          fi
       - name: Build release APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
