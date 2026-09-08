@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:provider/provider.dart';
 import '../models/connection.dart';
 import '../services/connection_store.dart';
@@ -60,39 +61,44 @@ class _ConnectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dismissible(
-      key: Key(profile.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        color: Colors.red,
-        child: const Icon(Icons.delete, color: Colors.white),
+    // 对齐 Swift 版 ConnectionsView.swipeActions：
+    // 左滑（end）露出“编辑 + 删除”两个窄按钮；右滑（start）露出“编辑”。
+    // 卡片内容始终可见，不会被整行红色背景遮住。
+    return Slidable(
+      key: ValueKey(profile.id),
+      startActionPane: ActionPane(
+        motion: const BehindMotion(),
+        extentRatio: 0.22,
+        children: [
+          SlidableAction(
+            onPressed: (_) => _openEdit(context),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Colors.white,
+            icon: Icons.edit,
+            label: '编辑',
+          ),
+        ],
       ),
-      confirmDismiss: (direction) async {
-        return await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('删除连接'),
-                content: Text('确定删除连接「${profile.name}」？密码也会一并清除。'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('取消'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    child: const Text('删除'),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
-      },
-      onDismissed: (_) async {
-        await SecureStorage.deletePassword(profile.id);
-        Provider.of<ConnectionStore>(context, listen: false).remove(profile.id);
-      },
+      endActionPane: ActionPane(
+        motion: const BehindMotion(),
+        extentRatio: 0.44,
+        children: [
+          SlidableAction(
+            onPressed: (_) => _openEdit(context),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Colors.white,
+            icon: Icons.edit,
+            label: '编辑',
+          ),
+          SlidableAction(
+            onPressed: (_) => _confirmDelete(context),
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            icon: Icons.delete,
+            label: '删除',
+          ),
+        ],
+      ),
       child: Card(
         child: ListTile(
           leading: const Icon(Icons.storage),
@@ -104,24 +110,52 @@ class _ConnectionCard extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Tooltip(
-                message: '已启用 SSL 加密',
-                child: Icon(Icons.lock, size: 18, color: Colors.green),
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ConnectionEditScreen(profile: profile),
-                  ),
+              if (profile.useTLS)
+                const Tooltip(
+                  message: '已启用 SSL 加密',
+                  child: Icon(Icons.lock, size: 18, color: Colors.green),
                 ),
-              ),
             ],
           ),
           onTap: () => _connect(context),
         ),
       ),
     );
+  }
+
+  void _openEdit(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConnectionEditScreen(profile: profile),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('删除连接'),
+            content: Text('确定删除连接「${profile.name}」？密码也会一并清除。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (confirmed) {
+      await SecureStorage.deletePassword(profile.id);
+      if (context.mounted) {
+        Provider.of<ConnectionStore>(context, listen: false).remove(profile.id);
+      }
+    }
   }
 
   void _connect(BuildContext context) async {
