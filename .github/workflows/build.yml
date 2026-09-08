@@ -30,11 +30,22 @@ jobs:
       - run: flutter pub get
       - name: Generate native project (android)
         run: |
-          flutter create --platforms=android --org com.cute6696 sqlinkflutter
-          cp -r sqlinkflutter/android .
-          rm -rf sqlinkflutter
+          flutter create --platforms=android --org com.jiayu sqlink
+          cp -r sqlink/android .
+          rm -rf sqlink
       - name: Set app display name
-        run: sed -i 's/android:label="sqlinkflutter"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+        run: sed -i 's/android:label="sqlink"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+      - name: Replace app icon
+        run: |
+          # 移除自适应图标配置，确保使用单张 PNG 作为应用图标。
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          for d in android/app/src/main/res/mipmap-mdpi \
+                   android/app/src/main/res/mipmap-hdpi \
+                   android/app/src/main/res/mipmap-xhdpi \
+                   android/app/src/main/res/mipmap-xxhdpi \
+                   android/app/src/main/res/mipmap-xxxhdpi; do
+            cp assets/icon/android/ic_launcher_$(basename "$d" | cut -d- -f2).png "$d/ic_launcher.png"
+          done
       - name: Bump minSdkVersion to 23 (flutter_secure_storage 的 encryptedSharedPreferences 需 API 23+)
         run: |
           if [ -f android/app/build.gradle.kts ]; then
@@ -60,11 +71,18 @@ jobs:
       - run: flutter pub get
       - name: Generate native project (ios)
         run: |
-          flutter create --platforms=ios --org com.cute6696 sqlinkflutter
-          cp -r sqlinkflutter/ios .
-          rm -rf sqlinkflutter
-      - name: Set app display name
-        run: sed -i '' 's/$(PRODUCT_NAME)/SQLink/g' ios/Runner/Info.plist
+          flutter create --platforms=ios --org com.jiayu sqlink
+          cp -r sqlink/ios .
+          rm -rf sqlink
+      - name: Set app display name & allow arbitrary loads
+        run: |
+          plutil -replace CFBundleDisplayName -string SQLink ios/Runner/Info.plist
+          plutil -replace NSAppTransportSecurity -json '{"NSAllowsArbitraryLoads":true}' ios/Runner/Info.plist
+      - name: Replace app icon
+        run: |
+          rm -f ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png
+          cp assets/icon/ios/*.png ios/Runner/Assets.xcassets/AppIcon.appiconset/
+          cp assets/icon/ios/Contents.json ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json
       - name: Install CocoaPods
         run: sudo gem install cocoapods
       - name: Build iOS (no codesign)

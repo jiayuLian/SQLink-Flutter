@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:mysql_client_plus/mysql_client_plus.dart';
 import '../models/connection.dart';
 
@@ -30,15 +31,26 @@ class MySQLService {
       _conn!.close();
       _conn = null;
     }
+    // TLS 始终开启、自动信任自签名证书，保持与 Swift 一致。
+    final useTLS = true;
+    final trustSelfSigned = true;
+    // 若主机是 IPv4 字面量，强制使用 IPv4 地址对象连接，避免 Dart Socket.connect
+    // 在部分 iOS 网络环境下解析到 IPv6 映射地址出现 errno 65 / No route to host。
+    dynamic host;
+    final ipv4 = _parseIpv4(profile.host);
+    if (ipv4 != null) {
+      host = InternetAddress(ipv4, type: InternetAddressType.IPv4);
+    } else {
+      host = profile.host;
+    }
     _conn = await MySQLConnection.createConnection(
-      host: profile.host,
+      host: host,
       port: profile.port,
       userName: profile.user,
       password: password,
       databaseName: profile.database,
-      secure: profile.useTLS,
-      onBadCertificate:
-          profile.useTLS && profile.trustSelfSigned ? (_) => true : null,
+      secure: useTLS,
+      onBadCertificate: useTLS && trustSelfSigned ? (_) => true : null,
     );
     // 对齐 Swift：底层 socket 读写超时设为 30 秒。
     await _conn!.connect().timeout(
@@ -49,6 +61,21 @@ class MySQLService {
         throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
       },
     );
+  }
+
+  /// 解析纯 IPv4 字面量地址；非 IPv4 返回 null，让 Socket 走域名解析。
+  static String? _parseIpv4(String host) {
+    final parts = host.split('.');
+    if (parts.length != 4) return null;
+    final nums = <int>[];
+    for (final p in parts) {
+      final n = int.tryParse(p);
+      if (n == null || n < 0 || n > 255) return null;
+      // 不允许前导零（如 01）。
+      if (p.length > 1 && p.startsWith('0')) return null;
+      nums.add(n);
+    }
+    return nums.join('.');
   }
 
   /// 执行任意 SQL（支持多语句），返回全部结果集。

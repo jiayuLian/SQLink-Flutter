@@ -35,6 +35,7 @@ class _FilterBuilderState extends State<FilterBuilder> {
   late List<FilterCondition> _drafts;
   late String _sortField;
   late String _sortDir;
+  final _controllers = <String, TextEditingController>{};
 
   @override
   void initState() {
@@ -51,25 +52,41 @@ class _FilterBuilderState extends State<FilterBuilder> {
         .toList();
     _sortField = widget.initialSortField;
     _sortDir = widget.initialSortDir;
+    for (final c in _drafts) {
+      _controllers[c.hashCode.toString()] = TextEditingController(text: c.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   List<String> get _fieldNames => widget.columns.map((c) => c.field).toList();
 
+  String _keyFor(FilterCondition c) => '${c.hashCode}';
+
   void _add() {
     final f = _fieldNames.isNotEmpty ? _fieldNames.first : '';
-    _drafts.add(FilterCondition(
+    final condition = FilterCondition(
       field: f,
       op: FilterOp.contains,
       value: '',
       enabled: true,
-      logic: FilterLogic.and,
-    ));
+      logic: _drafts.isEmpty ? FilterLogic.and : FilterLogic.and,
+    );
+    _drafts.add(condition);
+    _controllers[_keyFor(condition)] = TextEditingController(text: '');
     setState(() {});
   }
 
   void _remove(int i) {
+    final c = _drafts[i];
+    _controllers.remove(_keyFor(c))?.dispose();
     _drafts.removeAt(i);
-    // 删除后首条不再显示 AND/OR 关系。
     if (_drafts.isNotEmpty) _drafts[0].logic = FilterLogic.and;
     setState(() {});
   }
@@ -195,7 +212,7 @@ class _FilterBuilderState extends State<FilterBuilder> {
             ),
             if (c.op.needsValue)
               TextField(
-                controller: TextEditingController(text: c.value),
+                controller: _controllers[_keyFor(c)],
                 decoration: const InputDecoration(
                   labelText: '值',
                   isCollapsed: true,

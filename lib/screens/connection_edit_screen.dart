@@ -18,13 +18,14 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
   late ConnectionProfile _p;
   final _passwordController = TextEditingController();
   bool _passwordChanged = false;
+  bool _showPassword = false;
   bool _testing = false;
+  String? _testMessage;
+  bool _testOk = false;
 
   @override
   void initState() {
     super.initState();
-    // 编辑时基于原对象做一份拷贝：开关等直接改动不会污染 store 里已存的连接，
-    // 只有点「保存」(upsert) 才真正写回。
     _p = widget.profile?.copyWith() ??
         ConnectionProfile(
           name: '',
@@ -32,10 +33,18 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
           port: 3306,
           user: 'root',
           database: '',
-          useTLS: true,
-          trustSelfSigned: true,
         );
-    // 编辑时不预填密码：避免泄漏密码长度，且「留空」语义统一为「保留原密码」。
+    // TLS 始终开启、始终信任自签名证书，无需用户操作。
+    _p.useTLS = true;
+    _p.trustSelfSigned = true;
+    // 编辑时若已存密码，预填到密码框以便测试/保存（与 Swift 一致）。
+    if (widget.profile != null) {
+      SecureStorage.getPassword(_p.id).then((pw) {
+        if (pw != null && pw.isNotEmpty && mounted) {
+          _passwordController.text = pw;
+        }
+      });
+    }
   }
 
   @override
@@ -47,11 +56,16 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
   void _save() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    // 对齐 Swift：信任自签名证书恒等于 TLS 开关（buildProfile 写 trustSelfSigned: useTLS）。
-    _p.trustSelfSigned = _p.useTLS;
-    // 仅当用户确实输入了非空密码才写入；留空 = 保留原密码（不覆盖）。
-    if (_passwordChanged && _passwordController.text.isNotEmpty) {
-      await SecureStorage.setPassword(_p.id, _passwordController.text);
+    // TLS 恒开、自签名恒信任。
+    _p.useTLS = true;
+    _p.trustSelfSigned = true;
+    if (_passwordChanged) {
+      final pw = _passwordController.text;
+      if (pw.isNotEmpty) {
+        await SecureStorage.setPassword(_p.id, pw);
+      } else {
+        await SecureStorage.deletePassword(_p.id);
+      }
     }
     if (!mounted) return;
     Provider.of<ConnectionStore>(context, listen: false).upsert(_p);
@@ -62,20 +76,33 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
   Future<void> _test() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    _p.trustSelfSigned = _p.useTLS;
-    setState(() => _testing = true);
+    _p.useTLS = true;
+    _p.trustSelfSigned = true;
+    setState(() {
+      _testing = true;
+      _testMessage = null;
+    });
     try {
+      final pw = _passwordController.text.isNotEmpty
+          ? _passwordController.text
+          : (widget.profile != null
+              ? (await SecureStorage.getPassword(_p.id)) ?? ''
+              : '');
       final svc = MySQLService(_p);
-      await svc.connect(_passwordController.text);
+      await svc.connect(pw);
       svc.close();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('连接成功 ✓')));
+        setState(() {
+          _testOk = true;
+          _testMessage = '连接成功 ✓';
+        });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('连接失败：$e')));
+        setState(() {
+          _testOk = false;
+          _testMessage = '连接失败：$e';
+        });
       }
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -84,9 +111,10 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isNew = widget.profile == null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.profile == null ? '新增连接' : '编辑连接'),
+        title: Text(isNew ? '新建连接' : '编辑连接'),
         actions: [
           TextButton(
             onPressed: _testing ? null : _test,
@@ -106,52 +134,108 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextFormField(
-              initialValue: _p.name,
-              decoration: const InputDecoration(labelText: '名称（可选）'),
-              onSaved: (v) => _p.name = v?.trim() ?? '',
-            ),
-            TextFormField(
-              initialValue: _p.host,
-              decoration: const InputDecoration(labelText: '主机 / IP *'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? '必填' : null,
-              onSaved: (v) => _p.host = v!.trim(),
-            ),
-            TextFormField(
-              initialValue: _p.port.toString(),
-              decoration: const InputDecoration(labelText: '端口 *'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                final n = int.tryParse(v ?? '');
-                return (n == null || n <= 0) ? '端口无效' : null;
-              },
-              onSaved: (v) => _p.port = int.parse(v!),
-            ),
-            TextFormField(
-              initialValue: _p.user,
-              decoration: const InputDecoration(labelText: '用户名 *'),
-              onSaved: (v) => _p.user = v?.trim() ?? 'root',
-            ),
-            TextFormField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: widget.profile == null ? '密码（可选）' : '新密码（留空表示保留原密码）',
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('基本信息', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      initialValue: _p.name,
+                      decoration: const InputDecoration(labelText: '连接名称（可选）'),
+                      onSaved: (v) => _p.name = v?.trim() ?? '',
+                    ),
+                    TextFormField(
+                      initialValue: _p.host,
+                      decoration: const InputDecoration(labelText: '主机 / IP'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? '必填' : null,
+                      onSaved: (v) => _p.host = v!.trim(),
+                    ),
+                    TextFormField(
+                      initialValue: _p.port.toString(),
+                      decoration: const InputDecoration(labelText: '端口'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        final n = int.tryParse(v ?? '');
+                        return (n == null || n <= 0) ? '端口无效' : null;
+                      },
+                      onSaved: (v) => _p.port = int.parse(v!),
+                    ),
+                    TextFormField(
+                      initialValue: _p.user,
+                      decoration: const InputDecoration(labelText: '用户名'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? '必填' : null,
+                      onSaved: (v) => _p.user = v?.trim() ?? 'root',
+                    ),
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: InputDecoration(
+                        labelText: '密码',
+                        suffixIcon: IconButton(
+                          icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () => setState(() => _showPassword = !_showPassword),
+                        ),
+                      ),
+                      obscureText: !_showPassword,
+                      onChanged: (_) => _passwordChanged = true,
+                    ),
+                    TextFormField(
+                      initialValue: _p.database,
+                      decoration: const InputDecoration(labelText: '默认数据库（可选）'),
+                      onSaved: (v) => _p.database = v?.trim() ?? '',
+                    ),
+                  ],
+                ),
               ),
-              obscureText: true,
-              onChanged: (_) => _passwordChanged = true,
-            ),
-            TextFormField(
-              initialValue: _p.database,
-              decoration: const InputDecoration(labelText: '默认数据库（可选）'),
-              onSaved: (v) => _p.database = v?.trim() ?? '',
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              title: const Text('使用 TLS/SSL 加密'),
-              subtitle: const Text('启用加密传输，并自动信任自签名证书（适用于自建服务器）'),
-              value: _p.useTLS,
-              onChanged: (v) => setState(() => _p.useTLS = v),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('安全', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '已启用加密传输，并自动信任自签名证书（适用于自建服务器）。关闭后将使用明文连接。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.lock, size: 18, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Text(
+                          '使用 SSL 连接',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
+            if (_testMessage != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    _testMessage!,
+                    style: TextStyle(
+                      color: _testOk ? Colors.green : Colors.red,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

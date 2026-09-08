@@ -99,17 +99,15 @@ class _ConnectionCard extends StatelessWidget {
           title: Text(profile.name.isEmpty ? profile.host : profile.name),
           subtitle: Text(
             '${profile.user}@${profile.host}:${profile.port}'
-            '${profile.database.isNotEmpty ? ' / ${profile.database}' : ''}'
-            '${profile.useTLS ? ' · TLS' : ' · 明文'}',
+            '${profile.database.isNotEmpty ? ' / ${profile.database}' : ''}',
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (profile.useTLS)
-                const Tooltip(
-                  message: '已启用 TLS/SSL 加密',
-                  child: Icon(Icons.lock, size: 18, color: Colors.green),
-                ),
+              const Tooltip(
+                message: '已启用 SSL 加密',
+                child: Icon(Icons.lock, size: 18, color: Colors.green),
+              ),
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: () => Navigator.of(context).push(

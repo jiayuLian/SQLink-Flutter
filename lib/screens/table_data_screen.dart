@@ -48,7 +48,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
   String? _editError;
   bool _saving = false;
 
-  int get _pageSize => Provider.of<AppSettings>(context, listen: false).pageSize;
+  late int _pageSize;
 
   /// 主键：优先 PRI，其次 UNI（对齐 Swift 的 primaryKey 判定）。
   String? _primaryKey() {
@@ -71,8 +71,15 @@ class _TableDataScreenState extends State<TableDataScreen> {
   @override
   void initState() {
     super.initState();
+    _pageSize = 100;
     _loadColumns();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pageSize = Provider.of<AppSettings>(context, listen: false).pageSize;
   }
 
   Future<void> _loadColumns() async {
@@ -397,16 +404,17 @@ class _TableDataScreenState extends State<TableDataScreen> {
     final cols = _data!.columns;
     final pkIndex = _pkIndex;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
+    final pkBg = isDark ? Colors.amber.shade900.withOpacity(0.35) : Colors.amber.shade100;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
         child: DataTable(
-          columns: cols
-              .map((c) => DataColumn(
-                    label: Text((cols.indexOf(c) == pkIndex ? '🔑 ' : '') + c),
-                  ))
-              .toList(),
+          columns: [
+            for (var ci = 0; ci < cols.length; ci++)
+              DataColumn(
+                label: Text((ci == pkIndex ? '🔑 ' : '') + cols[ci]),
+              ),
+          ],
           rows: List.generate(_editing.length, (ri) {
             return DataRow(
               cells: List.generate(cols.length, (ci) {
