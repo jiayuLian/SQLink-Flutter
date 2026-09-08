@@ -35,6 +35,13 @@ jobs:
           rm -rf sqlink
       - name: Set app display name
         run: sed -i 's/android:label="sqlink"/android:label="SQLink"/' android/app/src/main/AndroidManifest.xml
+      - name: Set Android applicationId to com.jiayu.sqlinkFlutter
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i -E 's/applicationId\s*=.*/applicationId = "com.jiayu.sqlinkFlutter"/' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i -E 's/applicationId\s+"[^"]+"/applicationId "com.jiayu.sqlinkFlutter"/' android/app/build.gradle
+          fi
       - name: Replace app icon
         run: |
           # 移除自适应图标配置，确保使用单张 PNG 作为应用图标。
@@ -75,9 +82,10 @@ jobs:
           flutter create --platforms=ios --org com.jiayu sqlink
           cp -r sqlink/ios .
           rm -rf sqlink
-      - name: Set app display name & allow arbitrary loads
+      - name: Set app display name & bundle identifier & allow arbitrary loads
         run: |
           plutil -replace CFBundleDisplayName -string SQLink ios/Runner/Info.plist
+          plutil -replace CFBundleIdentifier -string com.jiayu.sqlinkFlutter ios/Runner/Info.plist
           plutil -replace NSAppTransportSecurity -json '{"NSAllowsArbitraryLoads":true}' ios/Runner/Info.plist
       - name: Replace app icon
         run: |

@@ -40,6 +40,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   List<String> _tables = [];
   List<ColumnInfo> _contextColumns = [];
   String _contextTable = '';
+  // 自动从当前 SQL 中提取表名并加载列，用于字段补全（不依赖手动选上下文表）。
+  final Map<String, List<ColumnInfo>> _sqlTableColumns = {};
 
   // 可编辑结果集（对齐 Swift 的 edit-from-result）。
   bool _canEdit = false;
@@ -68,6 +70,41 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   void _onSqlChanged() {
     if (mounted) setState(() {});
+    _loadColumnsForSqlTables();
+  }
+
+  /// 从 SQL 中提取反引号或裸标识符的表名，并异步加载列信息用于补全。
+  List<String> _extractSqlTables() {
+    final sql = _sql.text;
+    final tables = <String>{};
+    final regex = RegExp(
+      r'\b(from|join|update|into)\b\s+(`?)([^`\s;]+)\2',
+      caseSensitive: false,
+      multiLine: true,
+    );
+    for (final m in regex.allMatches(sql)) {
+      final raw = m.group(3)!;
+      // 处理 db.table 形式，只取表名。
+      final table = raw.split('.').last.replaceAll('`', '');
+      if (table.isNotEmpty) tables.add(table);
+    }
+    return tables.toList();
+  }
+
+  Future<void> _loadColumnsForSqlTables() async {
+    final tables = _extractSqlTables();
+    if (tables.isEmpty) return;
+    final db = widget.db ?? '';
+    if (db.isEmpty) return;
+    for (final t in tables) {
+      if (_sqlTableColumns.containsKey(t)) continue;
+      try {
+        final cols = await widget.service.listColumns(db, t);
+        if (mounted) setState(() => _sqlTableColumns[t] = cols);
+      } catch (_) {
+        // 忽略无权限或不存在的表。
+      }
+    }
   }
 
   @override
@@ -90,9 +127,25 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           _contextTable = widget.defaultTable!;
           _loadContextColumns();
         }
+        // 兜底：即使下拉框没显示默认表，也加载其字段用于补全。
+        if (widget.defaultTable != null &&
+            widget.defaultTable!.isNotEmpty &&
+            !_sqlTableColumns.containsKey(widget.defaultTable)) {
+          _loadColumnsForTable(widget.defaultTable!);
+        }
       }
     } catch (_) {
       // 表名仅用于补全提示，失败忽略。
+    }
+  }
+
+  Future<void> _loadColumnsForTable(String table) async {
+    if (widget.db == null || widget.db!.isEmpty || table.isEmpty) return;
+    try {
+      final cols = await widget.service.listColumns(widget.db!, table);
+      if (mounted) setState(() => _sqlTableColumns[table] = cols);
+    } catch (_) {
+      // 忽略。
     }
   }
 
@@ -125,22 +178,25 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     }
   }
 
-  /// 取出光标前正在输入的“当前词”。以空格/换行/逗号/括号/反引号为界，
+  /// 取出光标前正在输入的“当前词”。以空格/换行/逗号/括号/反引号/等号/点为界，
   /// 并去掉首尾反引号，方便对 `table`.`field` 这种场景也能提示。
   String get _currentWord {
     final t = _sql.text.substring(0, _sql.selection.baseOffset.clamp(0, _sql.text.length));
-    final match = RegExp(r'[\s,()`]+([^\s,()`]*)$').firstMatch(t);
+    final match = RegExp(r'[\s,()`.=]+([^\s,()`.=]*)$').firstMatch(t);
     return (match?.group(1) ?? '').replaceAll('`', '');
   }
 
   List<String> get _suggestions {
     final w = _currentWord.toUpperCase();
     if (w.isEmpty) return [];
-    final pool = <String>[
+    // 把 SQL 中引用到的所有表的字段也纳入候选池。
+    final sqlFields = _sqlTableColumns.values.expand((c) => c.map((i) => i.field));
+    final pool = <String>{
       ..._keywords,
       ..._tables,
       ..._contextColumns.map((c) => c.field),
-    ];
+      ...sqlFields,
+    };
     final seen = <String>{};
     final out = <String>[];
     for (final item in pool) {
@@ -154,6 +210,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   }
 
   Future<void> _run() async {
+    // 收起软键盘，避免遮挡结果。
+    FocusManager.instance.primaryFocus?.unfocus();
     final sql = _sql.text.trim();
     if (sql.isEmpty) return;
     // 全局历史始终记录（对齐 Swift QueryHistory.add，不受 autoSaveSQL 影响）。
@@ -550,7 +608,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
         // 运行 / 编辑 / 消息工具栏。
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
+          child: Wrap(
+            spacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilledButton.icon(
                 onPressed: _running ? null : _run,
@@ -563,7 +623,6 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                     : const Icon(Icons.play_arrow),
                 label: Text(_running ? '执行中' : '运行'),
               ),
-              const SizedBox(width: 8),
               if (resultSets.isNotEmpty) ...[
                 IconButton(
                   onPressed: _exportCsv,
@@ -605,23 +664,23 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                     icon: const Icon(Icons.edit),
                     label: const Text('编辑'),
                   ),
-              const Spacer(),
-              if (_message != null)
-                Expanded(
-                  child: Text(
-                    _message!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _message!.contains('成功') || _message!.contains('返回')
-                          ? null
-                          : Colors.red,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
             ],
           ),
         ),
+        // 将执行消息单独放一行，避免被工具栏按钮挤成“返回 19…”。
+        if (_message != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            child: Text(
+              _message!,
+              style: TextStyle(
+                fontSize: 12,
+                color: _message!.contains('成功') || _message!.contains('返回')
+                    ? null
+                    : Colors.red,
+              ),
+            ),
+          ),
         if (_editMessage != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),

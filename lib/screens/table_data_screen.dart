@@ -159,6 +159,30 @@ class _TableDataScreenState extends State<TableDataScreen> {
     );
   }
 
+  // ---- 点击标题显示完整表名 ----
+  void _showFullTableName(String full) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('完整表名'),
+        content: SelectableText(full),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: full));
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---- 表结构：只保留「建表 SQL」（按你要求去掉列信息列表） ----
   Future<void> _showSchema() async {
     final ddl = await widget.service.showCreateTable(widget.db, widget.table);
@@ -319,9 +343,19 @@ class _TableDataScreenState extends State<TableDataScreen> {
     final pkOk = _primaryKey() != null;
     final hasFilter = _activeWhere != null || _activeOrderBy != null;
 
+    final fullTitle = '${widget.db}.${widget.table}';
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.db}.${widget.table}'),
+        title: GestureDetector(
+          onTap: () => _showFullTableName(fullTitle),
+          child: Tooltip(
+            message: fullTitle,
+            child: Text(
+              fullTitle,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.schema),
