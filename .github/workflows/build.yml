@@ -42,8 +42,8 @@ jobs:
           elif [ -f android/app/build.gradle ]; then
             sed -i -E 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
           fi
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build release APK (仅 arm64-v8a，市面上最主流架构)
+        run: flutter build apk --release --target-platform=android-arm64 --tree-shake-icons
       - uses: actions/upload-artifact@v4
         with:
           name: apk
