@@ -5,8 +5,7 @@ on:
     branches: [develop]
 
 permissions:
-  contents: read
-  issues: write
+  contents: write
 
 jobs:
   analyze:
@@ -25,19 +24,23 @@ jobs:
             const fs = require('fs');
             const report = fs.readFileSync('ANALYZE.md', 'utf8');
             const pubget = fs.readFileSync('PUBGET.md', 'utf8');
-            const body = '## flutter pub get\n```\n' + pubget + '\n```\n\n## flutter analyze\n```\n' + report + '\n```';
-            const title = 'Flutter Analyze Report';
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner, repo: context.repo.repo, state: 'open'
-            });
-            const existing = issues.find(i => i.title === title);
-            if (existing) {
-              await github.rest.issues.update({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: existing.number, body
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner, repo: context.repo.repo, title, body
-              });
+            const content = '## flutter pub get\n```\n' + pubget + '\n```\n\n## flutter analyze\n```\n' + report + '\n```';
+            const owner = context.repo.owner, repo = context.repo.repo;
+            const b = 'analyze-report';
+            try {
+              await github.rest.repos.getBranch({ owner, repo, branch: b });
+            } catch (e) {
+              const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/develop' });
+              await github.rest.git.createRef({ owner, repo, ref: 'refs/heads/' + b, sha: ref.data.object.sha });
             }
+            let sha;
+            try {
+              const cur = await github.rest.repos.getContent({ owner, repo, path: 'ANALYZE.md', ref: b });
+              sha = cur.data.sha;
+            } catch (e) {}
+            await github.rest.repos.createOrUpdateFileContents({
+              owner, repo, path: 'ANALYZE.md', branch: b,
+              message: 'analyze report',
+              content: Buffer.from(content).toString('base64'),
+              sha
+            });
