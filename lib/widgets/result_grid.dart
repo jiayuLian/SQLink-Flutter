@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-/// 查询结果表格（水平+垂直双向滚动，NULL 置灰）。
-/// 对齐 Swift ResultGridView：主键列（PRI/UNI）以 🔑 标记并加强调背景高亮。
+/// 查询结果表格（Navicat 风格，对齐 Swift ResultGridView）。
+/// 主键列（PRI/UNI）以 🔑 标记并以主题色高亮；单元格等宽字体、定宽列、隔行底色；
+/// 点按单元格弹出完整值并支持复制。
 class ResultGrid extends StatelessWidget {
   final List<String> columns;
   final List<Map<String, String?>> rows;
@@ -18,59 +20,128 @@ class ResultGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerColor = isDark ? Colors.teal.shade900 : Colors.teal.shade50;
-    final nullColor = Colors.grey.shade500;
-    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
     final pkIndex = primaryKey == null ? -1 : columns.indexOf(primaryKey!);
+    const minW = 80.0;
+    const maxW = 160.0;
+    const mono = TextStyle(fontFamily: 'monospace');
+
+    Widget headerCell(String label, bool isPk) => Container(
+          constraints: const BoxConstraints(minWidth: minW),
+          width: maxW,
+          padding: const EdgeInsets.all(6),
+          color: isPk
+              ? scheme.primary.withValues(alpha: 0.22)
+              : scheme.primary.withValues(alpha: 0.10),
+          child: Text(
+            label,
+            style: mono.copyWith(fontSize: 13, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+
+    Widget cell(String? v, bool isPk, int ri, int ci) {
+      final stripe = (ri + ci) % 2 == 0;
+      final bg = isPk
+          ? scheme.primary.withValues(alpha: 0.10)
+          : (stripe ? Colors.grey.withValues(alpha: isDark ? 0.12 : 0.04) : null);
+      return GestureDetector(
+        onTap: () => _showCell(context, v),
+        child: Container(
+          constraints: const BoxConstraints(minWidth: minW),
+          width: maxW,
+          padding: const EdgeInsets.all(6),
+          color: bg,
+          child: Text(
+            v ?? 'NULL',
+            style: mono.copyWith(
+              fontSize: 12,
+              color: v == null ? Colors.grey.shade500 : null,
+              fontStyle: v == null ? FontStyle.italic : null,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
+
+    final header = Row(
+      children: [
+        Container(
+          width: 44,
+          padding: const EdgeInsets.all(6),
+          color: scheme.primary.withValues(alpha: 0.10),
+          child: const Text('#', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        for (var ci = 0; ci < columns.length; ci++)
+          headerCell((ci == pkIndex ? '🔑 ' : '') + columns[ci], ci == pkIndex),
+      ],
+    );
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        for (var ri = 0; ri < rows.length; ri++)
+          Row(
+            children: [
+              Container(
+                width: 44,
+                padding: const EdgeInsets.all(6),
+                color: (ri % 2 == 0)
+                    ? Colors.grey.withValues(alpha: isDark ? 0.12 : 0.04)
+                    : null,
+                child: Text('${ri + 1}',
+                    style: TextStyle(color: Colors.grey.shade500)),
+              ),
+              for (var ci = 0; ci < columns.length; ci++)
+                cell(rows[ri][columns[ci]], ci == pkIndex, ri, ci),
+            ],
+          ),
+      ],
+    );
+
+    if (rows.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('无结果集', style: TextStyle(color: Colors.grey)),
+      );
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all<Color?>(headerColor),
-          columns: [
-            const DataColumn(
-              label: Text('#', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-            for (var ci = 0; ci < columns.length; ci++)
-              DataColumn(
-                label: Text(
-                  (ci == pkIndex ? '🔑 ' : '') + columns[ci],
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-          ],
-          rows: [
-            for (var i = 0; i < rows.length; i++)
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('${i + 1}', style: TextStyle(color: nullColor)),
-                  ),
-                  for (var ci = 0; ci < columns.length; ci++)
-                    _buildCell(columns[ci], rows[i][columns[ci]], ci == pkIndex, pkBg),
-                ],
-              ),
-          ],
-        ),
+        child: body,
       ),
     );
   }
 
-  DataCell _buildCell(String col, String? v, bool isPk, Color? pkBg) {
-    return DataCell(
-      Container(
-        color: isPk ? pkBg : null,
-        child: Text(
-          v ?? 'NULL',
-          style: v == null
-              ? TextStyle(color: Colors.grey.shade500, fontStyle: FontStyle.italic)
-              : (isPk
-                  ? const TextStyle(fontWeight: FontWeight.w600)
-                  : null),
+  void _showCell(BuildContext context, String? value) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('单元格值'),
+        content: SelectableText(
+          value ?? 'NULL',
+          style: const TextStyle(fontFamily: 'monospace'),
         ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (value != null) {
+                Clipboard.setData(ClipboardData(text: value));
+              }
+              Navigator.of(context).pop();
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }

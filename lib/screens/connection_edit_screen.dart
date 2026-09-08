@@ -56,9 +56,8 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
   void _save() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    // TLS 恒开、自签名恒信任。
-    _p.useTLS = true;
-    _p.trustSelfSigned = true;
+    // 自签名信任跟随 SSL 开关（与 Swift 一致：关闭 SSL 即明文连接）。
+    _p.trustSelfSigned = _p.useTLS;
     if (_passwordChanged) {
       final pw = _passwordController.text;
       if (pw.isNotEmpty) {
@@ -76,8 +75,7 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
   Future<void> _test() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    _p.useTLS = true;
-    _p.trustSelfSigned = true;
+    _p.trustSelfSigned = _p.useTLS;
     setState(() {
       _testing = true;
       _testMessage = null;
@@ -204,18 +202,12 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.lock, size: 18, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Text(
-                          '使用 SSL 连接',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.lock, color: Colors.green),
+                      title: const Text('使用 SSL 连接'),
+                      value: _p.useTLS,
+                      onChanged: (v) => setState(() => _p.useTLS = v),
                     ),
                   ],
                 ),
