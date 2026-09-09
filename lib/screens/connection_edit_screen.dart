@@ -181,7 +181,7 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
                       decoration: InputDecoration(
                         labelText: '密码',
                         suffixIcon: IconButton(
-                          icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+                          icon: Icon(_showPassword ? Icons.visibility : Icons.visibility_off),
                           onPressed: () => setState(() => _showPassword = !_showPassword),
                         ),
                       ),
