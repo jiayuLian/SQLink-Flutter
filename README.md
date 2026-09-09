@@ -58,7 +58,7 @@ zip -r SQLink-Flutter.ipa Payload
 
 - `ubuntu-latest` 构建 **APK**：自动注入 Android 网络权限、设置 applicationId 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、minSdk 23
 - `macos-latest` 构建**未签名 IPA**：用 `flutter build ios --release --no-codesign` 跳过 Xcode 签名步骤（CI 无需任何 Apple 证书），仅设置 Bundle Identifier 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、放开 ATS 网络限制（`NSAllowsArbitraryLoads` / `NSAllowsLocalNetworking`）
-- 合并发布到 GitHub Release（单个 `latest` 标签，每次发布覆盖上一版）
+- 合并发布到 GitHub Release：每次推送 `main` 生成一个**带版本号的新 Release**（标签 `v<run_number>`，如 `v32`、`v33`…），**保留全部历史版本**，不再覆盖单一 `latest`；Release 自动附带基于提交的更新说明
 
 产物文件名：
 
