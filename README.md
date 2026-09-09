@@ -1,47 +1,68 @@
-# SQLink (Flutter)
+# SQLink（Flutter 版）
 
-远程 MySQL 客户端，使用 Flutter 重写，一套代码同时出 **Android (APK)** 与 **iOS (IPA)**。
+**一个装在你手机上的 MySQL 客户端**——随时随地在 Android / iPhone 上连数据库、看表、跑 SQL、改数据。
 
-> 与原 Swift 版 `jiayuLian/SQLink` 并存、互不干扰。Swift 版保留不动。
-> 本 Flutter 版为**纯本地客户端**：连接密码仅存本机（iOS Keychain / Android 加密存储），不依赖任何后端服务。
-> 与 Swift 版不同，本版**不限制任何功能、无会员/激活体系**，所有能力全部开放。
+SQLink 最初是 iOS 上的 Swift 独立 App。为了让安卓也能用、并且**不限制任何功能**，我们用 Flutter 重写了它：一套代码同时出 Android（APK）和 iOS（IPA），所有能力全部开放，**没有会员、没有激活、没有后端账号体系**。
 
-## 功能
+---
 
-- 多连接管理（名称 / 主机 / 端口 / 用户 / 默认库 / 密码 / TLS / 自签信任）
-- 密码安全存储：iOS Keychain、Android EncryptedSharedPreferences
-- 库表浏览：数据库 → 表/视图 → 列（类型、键、NOT NULL）；数据库列表与表列表顶部均支持实时搜索名称
-- 表数据浏览：分页、排序、WHERE 筛选、行数统计、CSV 导出
-- 表数据内联编辑：设置筛选或排序后可就地修改单元格（未设置时隐藏编辑入口，避免误改全表数据）
-- 查询控制台：任意 SQL、多语句结果集、SQL 历史、关键字/表名/字段名自动补全、CSV 导出
-- 连接测试错误分类提示：账号错误 / 密码错误 / 网络不可达（拒绝连接、超时、DNS 失败）分别给出对应中文提示，而非笼统的 `Exception:`
-- TLS 加密连接，支持自签名证书信任（`onBadCertificate`）
-- 支持 `mysql_native_password` 与 `caching_sha2_password`（MySQL 8 默认）
-- 连接列表左滑删除采用 iOS 风格窄条（确认弹窗），不再整行红底遮挡
+## 这软件能帮你干什么？
 
-## 网络兼容性
+- **出门在外也能管数据库**：不用开电脑、不用连堡垒机，手机点开就连上你的 MySQL，查数据、排错、应急改一条配置都行。
+- **手机上直接写 SQL**：完整的查询控制台，支持多语句、结果集、历史记录，还能自动补全关键字 / 表名 / 字段名。
+- **像看 Excel 一样看表**：表数据分页浏览、排序、按条件筛选、统计行数，一键导出 CSV 带走。
+- **当场改数据**：设置筛选或排序后，直接在单元格上就地修改，不用导出再导回。
+- **库表再多也不慌**：数据库列表、表列表顶部都支持实时搜索，几百张表一输就定位。
 
-- 连接时直接传入字符串 `host`，由底层按 `InternetAddress.lookup` 解析，**兼容 NAT64 / IPv6-only 网络**（如纯 IPv6 蜂窝网络会合成 IPv6 地址），不会因强制 IPv4 而出现 `errno 65` 连接失败。
-- Android 端在 CI 构建时自动注入 `INTERNET` 与 `ACCESS_NETWORK_STATE` 权限，避免 `errno 13 (Permission denied)` 连接失败。
+---
 
-## 应用标识
+## 为什么选它（好处）
 
-| 项 | 值 |
+| 好处 | 说明 |
 | --- | --- |
-| 安装显示名（手机桌面） | `SQLink` |
-| Android applicationId | `com.jiayu.sqlinkFlutter` |
-| iOS Bundle Identifier | `com.jiayu.sqlinkFlutter` |
+| **全功能免费** | 不复制原 Swift 版的会员 / 激活体系，所有功能直接开放，零门槛。 |
+| **双端通用** | 同一套 Flutter 代码，Android 和 iOS 都能装，体验一致。 |
+| **纯本地、更安全** | 连接密码只存在你手机里（iOS Keychain / Android 加密存储），不依赖任何后端服务，账号密码不出本机。 |
+| **连得稳** | 兼容 NAT64 / IPv6-only 网络（纯 IPv6 蜂窝网也能连）；Android 已内置联网权限，不会出现「连不上」的权限坑。 |
+| **iOS 免开发者账号安装** | 未签名 IPA 经 TrollStore 安装时自动完成签名，**永久有效、不依赖 Apple ID / 开发者账号 / Mac**，比传统 7 天自签省心。 |
+| **报错看得懂** | 连接失败时区分「账号错 / 密码错 / 网络不可达」，直接给中文原因，不再甩一句 `Exception:`。 |
 
-## 从源码构建
+---
+
+## 功能一览
+
+- **多连接管理**：保存多个数据库连接（名称 / 主机 / 端口 / 用户 / 默认库 / 密码 / TLS / 自签信任），一台手机管所有库。
+- **密码安全存储**：iOS Keychain、Android EncryptedSharedPreferences，明文不落盘。
+- **库表浏览**：数据库 → 表 / 视图 → 列（类型、键、NOT NULL）；列表顶部支持实时搜索名称。
+- **表数据浏览**：分页、排序、WHERE 筛选、行数统计、CSV 导出。
+- **表数据内联编辑**：设置筛选或排序后可就地改单元格；未设置时隐藏编辑入口，避免误改全表数据。
+- **查询控制台**：任意 SQL、多语句结果集、SQL 历史、关键字 / 表名 / 字段名自动补全、CSV 导出。
+- **连接错误分类提示**：账号错误 / 密码错误 / 网络不可达（拒绝连接、超时、DNS 失败）分别给出对应中文提示。
+- **TLS 加密连接**：支持自签名证书信任（`onBadCertificate`）。
+- **认证兼容**：支持 `mysql_native_password` 与 `caching_sha2_password`（MySQL 8 默认认证方式）。
+- **iOS 风格交互**：连接列表左滑删除为窄条 + 确认弹窗，不再整行红底遮挡内容。
+
+---
+
+## 安装（极简）
+
+- **Android**：下载 Release 里的 `SQLink-Flutter.apk`，允许「未知来源」后安装即可。
+- **iOS**：iPhone 用 Safari 打开 Release 页（私有仓库需登录 GitHub），点 `SQLink-Flutter.ipa` → 用 **TrollStore** 打开安装。需设备兼容 TrollStore；安装时自动完成签名，**无需 Apple ID**。
+
+> 手机桌面上显示的名字就是 **`SQLink`**。
+
+---
+
+## 从源码构建（开发者向）
 
 ```bash
 flutter pub get
-flutter run            # 调试
-flutter build apk --release
-flutter build ios --release --no-codesign   # 未签名 IPA（需 macOS）
+flutter run                          # 本地调试
+flutter build apk --release          # Android
+flutter build ios --release --no-codesign   # iOS 未签名 IPA（需 macOS）
 ```
 
-iOS 未签名 IPA 打包（本地需 macOS）：
+iOS 未签名 IPA 本地打包（macOS）：
 
 ```bash
 cd build/ios/iphoneos
@@ -50,30 +71,14 @@ cp -r Runner.app Payload/
 zip -r SQLink-Flutter.ipa Payload
 ```
 
-> 产物为**未签名** IPA，不能直接装；用 **TrollStore** 打开安装时会在设备上完成签名（CoreTrust 漏洞，永久有效，无需 Apple ID）。
+> 产物为**未签名** IPA，不能直接装；用 **TrollStore** 打开安装时会在设备上完成签名（CoreTrust 漏洞，永久有效，无需 Apple ID）。这与传统「自签」（AltStore / Sideloadly 用免费 Apple ID 签名、7 天过期需重签）不同。
 
-## GitHub Actions 自动构建
+推送 `main` 分支即由 GitHub Actions 自动构建并发布（Android `SQLink-Flutter.apk` / iOS `SQLink-Flutter.ipa`）。
 
-推送到 `main` 分支即自动（推送到 `develop` 仅跑 `flutter analyze` 静态检查，不打包）：
-
-- `ubuntu-latest` 构建 **APK**：自动注入 Android 网络权限、设置 applicationId 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、minSdk 23
-- `macos-latest` 构建**未签名 IPA**：用 `flutter build ios --release --no-codesign` 跳过 Xcode 签名步骤（CI 无需任何 Apple 证书），仅设置 Bundle Identifier 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、放开 ATS 网络限制（`NSAllowsArbitraryLoads` / `NSAllowsLocalNetworking`）
-- 合并发布到 GitHub Release（单个 `latest` 标签，每次发布覆盖上一版；仅在真正修改代码/新增功能/修复 bug 时才另行发布带版本号的历史发行版）
-
-产物文件名：
-
-- Android：`SQLink-Flutter.apk`
-- iOS：`SQLink-Flutter.ipa`（构建时为**未签名**状态，安装时由 TrollStore 完成签名）
-
-> **关于 iOS 签名**：iOS 不允许运行完全无签名的 App。本流程 CI 产出的是「未签名」IPA，安装时由 **TrollStore 借助设备上的 CoreTrust 漏洞在本地完成签名**，永久有效、**不依赖 Apple ID / 开发者账号 / Mac**。这与传统「自签」（AltStore / Sideloadly 用免费 Apple ID 签名、7 天过期需重签）不同。
-
-## 安装
-
-- **Android**：下载 Release 中的 `SQLink-Flutter.apk`，允许「未知来源」后安装。
-- **iOS**：iPhone 上用 Safari 打开 Release 页（私有仓库需登录 GitHub），点击 `SQLink-Flutter.ipa` →
-  用 **TrollStore** 打开安装（仅支持兼容 TrollStore 的 iOS 版本；安装时自动完成签名，无需 Apple ID）。
+---
 
 ## 与原 Swift 版的差异
 
-- 不复制 Swift 版的账号 / 会员 / 后端激活体系（依赖私有后端 `sqlink-api`），本版**全功能免费开放**。
+- 不复制 Swift 版的账号 / 会员 / 后端激活体系（原版依赖私有后端 `sqlink-api`），本版**全功能免费开放**。
 - 表数据内联编辑基于「设置筛选或排序」后就地修改，未设置筛选时仅浏览、不直接改全表数据（与原 Swift 版基于主键的整行编辑略有不同）。
+- 多端一致：同一套 Flutter 代码同时覆盖 Android 与 iOS，原 Swift 版仅限 iOS。
