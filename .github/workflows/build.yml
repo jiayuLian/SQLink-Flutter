@@ -3,6 +3,9 @@ name: Build APK & IPA
 on:
   push:
     branches: [main]
+    # 仅改动 README 等文档时不触发构建（文件仍会更新到仓库，只是省去无意义的 APK/IPA 重建）
+    paths-ignore:
+      - '**/README.md'
   workflow_dispatch:
 
 permissions:
