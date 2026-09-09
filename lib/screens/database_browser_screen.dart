@@ -103,7 +103,7 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
   Widget _buildDbList() {
     return FutureBuilder<List<String>>(
       future: _databases,
-      builder: (ctx, snap) {
+      builder: (_, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -155,7 +155,7 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
   Widget _buildTableList() {
     return FutureBuilder<List<Map<String, String>>>(
       future: _tables,
-      builder: (ctx, snap) {
+      builder: (_, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
