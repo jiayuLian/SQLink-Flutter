@@ -137,15 +137,26 @@ jobs:
         run: |
           mv apk/app-release.apk apk/SQLink-Flutter.apk
           ls -la apk ipa
-      - name: Create GitHub Release (versioned, history preserved)
+      - name: Remove previous latest release & tag (keep only one version)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="latest"
+          rel_id=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          if [ -n "$rel_id" ]; then
+            echo "deleting old release $rel_id"
+            curl -s -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$rel_id"
+          fi
+          curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$TAG" || true
+      - name: Create GitHub Release (single latest version)
         uses: softprops/action-gh-release@v2
         with:
-          # 每次构建生成一个新的版本号 Release（v<run_number>，如 v32、v33…），
-          # 保留全部历史版本，不再覆盖单一 latest 标签。
-          tag_name: v${{ github.run_number }}
-          name: SQLink v${{ github.run_number }}
-          # 自动基于自上次 Release 以来的提交生成更新说明
-          generate_release_notes: true
+          tag_name: latest
+          name: SQLink latest
           files: |
             apk/SQLink-Flutter.apk
             ipa/SQLink-Flutter.ipa
