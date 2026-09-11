@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 /// 由表详情页与数据页共用。
 class SqlHighlighter extends StatelessWidget {
   final String sql;
-  const SqlHighlighter(this.sql, {super.key});
+  final double fontSize;
+  const SqlHighlighter(this.sql, {super.key, this.fontSize = 12});
 
   static const _keywords = {
     'CREATE', 'TABLE', 'TEMPORARY', 'PRIMARY', 'KEY', 'NOT', 'NULL',
@@ -28,7 +29,7 @@ class SqlHighlighter extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final plainStyle = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 12,
+      fontSize: fontSize,
       color: theme.colorScheme.onSurface,
     );
 

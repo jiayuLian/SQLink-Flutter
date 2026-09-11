@@ -195,18 +195,6 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                             ),
                           for (final c in _columns) _columnTile(c, theme),
                           const Divider(height: 1),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: _showDdl,
-                                icon: const Icon(Icons.description_outlined),
-                                label: const Text('查看建表 SQL'),
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -231,6 +219,16 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: ListTile(
+                        leading: const Icon(Icons.description_outlined),
+                        title: const Text('查看建表 SQL'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _showDdl,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Card(
                       margin: EdgeInsets.zero,
@@ -447,10 +445,9 @@ class _DdlDialogState extends State<_DdlDialog> {
                       child: SizedBox(
                         height: 320,
                         child: SingleChildScrollView(
-                          child: Transform.scale(
-                            scale: _scale,
-                            alignment: Alignment.topLeft,
-                            child: SqlHighlighter(_display),
+                          child: SqlHighlighter(
+                            _display,
+                            fontSize: 12 * _scale,
                           ),
                         ),
                       ),
