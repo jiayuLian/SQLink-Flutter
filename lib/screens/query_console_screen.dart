@@ -198,14 +198,69 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     }
   }
 
-  /// 取出光标前正在输入的“当前词”。以空格/换行/逗号/括号/反引号/等号/点为界，
-  /// 并去掉首尾反引号，方便对 `table`.`field` 这种场景也能提示。
+  /// 取出光标前正在输入的「限定符 + 当前词」片段。
+  /// - `a.` / `a.id` / `db.table.` → (限定符='a'/'a'/'db.table', 词=''/'id'/''')
+  /// - `SEL` / `lvv_c` → (null, 'SEL'/'lvv_c')
   /// 分隔符用 *（可零个）——否则在输入框最开头打字（如 SEL）时匹配不到，
   /// 补全会始终为空。
-  String get _currentWord {
-    final t = _sql.text.substring(0, _sql.selection.baseOffset.clamp(0, _sql.text.length));
-    final match = RegExp(r'[\s,()`.=]*([^\s,()`.=]*)$').firstMatch(t);
-    return (match?.group(1) ?? '').replaceAll('`', '');
+  (String? qualifier, String word) _tokenAt(String text) {
+    final dot = RegExp(r'([^\s,()`]*)\.([^\s,()`.=]*)$').firstMatch(text);
+    if (dot != null) {
+      return (
+        dot.group(1)!.replaceAll('`', ''),
+        dot.group(2)!.replaceAll('`', ''),
+      );
+    }
+    final plain = RegExp(r'[\s,()`.=]*([^\s,()`.=]*)$').firstMatch(text);
+    return (null, (plain?.group(1) ?? '').replaceAll('`', ''));
+  }
+
+  /// 解析 SQL 中的「别名/表名 → 真实表名（可带库前缀）」映射，
+  /// 用于 `alias.` / `table.` 形式输入时补全对应表的字段。
+  /// 支持 `FROM t a`、`FROM t AS a`、`JOIN t b ON ...`、逗号连接 `FROM t1 a, t2 b`、
+  /// 以及 `FROM db.t a`（带库前缀）。
+  Map<String, String> _aliasToTable() {
+    final sql = _sql.text;
+    final map = <String, String>{};
+    const reserved = {
+      'where', 'on', 'set', 'inner', 'left', 'right', 'cross', 'full', 'outer',
+      'order', 'group', 'having', 'limit', 'join', 'as', 'and', 'or', 'not',
+      'using', 'natural', 'union', 'asc', 'desc', 'values', 'by',
+      'from', 'into', 'update', // 逗号连接时这些词可能出现在别名位置，需排除
+    };
+    final regex = RegExp(
+      r'(?:\b(from|join|into|update)\b\s+|(,\s*))'
+      r'`?((?:[A-Za-z0-9_\$]+\.)?[A-Za-z0-9_\$]+)`?'
+      r'(?:\s+as\s+|\s+)`?([A-Za-z0-9_\$]+)`?',
+      caseSensitive: false,
+    );
+    for (final m in regex.allMatches(sql)) {
+      final tableExpr = m.group(3)!;
+      final alias = m.group(4)!;
+      if (reserved.contains(alias.toLowerCase())) continue;
+      map[alias.toLowerCase()] = tableExpr;
+    }
+    return map;
+  }
+
+  /// 给定 `alias.` 或 `table.` 中的限定符，返回其可补全的字段列表。
+  /// 别名 → 映射回真实表；直接表名（可带库前缀）则去掉库前缀按表名查。
+  List<String> _columnsForQualifier(String qualifier) {
+    final aliasMap = _aliasToTable();
+    String tableRef = aliasMap[qualifier.toLowerCase()] ?? qualifier;
+    if (tableRef.contains('.')) {
+      final parts = tableRef.split('.');
+      if (parts.length >= 2) tableRef = parts[parts.length - 1];
+    }
+    for (final entry in _sqlTableColumns.entries) {
+      if (entry.key.toLowerCase() == tableRef.toLowerCase()) {
+        return entry.value.map((c) => c.field).toList();
+      }
+    }
+    if (_contextTable.toLowerCase() == tableRef.toLowerCase() && _contextColumns.isNotEmpty) {
+      return _contextColumns.map((c) => c.field).toList();
+    }
+    return [];
   }
 
   /// 子序列模糊匹配：query 的字符按顺序出现在 s 中即算匹配
@@ -218,13 +273,15 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     return i == query.length;
   }
 
-  /// 候选池分三层，按优先级依次追加（关键词 → 表名 → 字段）：
-  /// - 关键词：前缀匹配（含 ORDER BY 等多词短语）；
-  /// - 表名：前缀 → 包含 → 模糊子序列（≥3 字符）；
-  /// - 字段（上下文表 / SQL 中引用表的列）：前缀 → 包含。
+  /// 候选池：
+  /// - 若当前片段带限定符（`alias.` / `table.`）→ 只补全该限定符对应表的字段；
+  /// - 否则按三层（关键词 → 表名 → 字段）补全：
+  ///   关键词前缀匹配（含 ORDER BY 等多词短语）；表名前缀/包含/模糊子序列（≥3 字符）；
+  ///   字段（上下文表 / SQL 中引用表的列）前缀/包含。
   List<String> get _suggestions {
-    final w = _currentWord;
-    if (w.isEmpty) return [];
+    final cursor = _sql.selection.baseOffset.clamp(0, _sql.text.length);
+    final (qualifier, w) = _tokenAt(_sql.text.substring(0, cursor));
+    if (w.isEmpty && (qualifier == null || qualifier.isEmpty)) return [];
     final wu = w.toUpperCase();
     final out = <String>[];
     final seen = <String>{};
@@ -234,9 +291,30 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       out.add(item);
     }
 
+    // 1) 限定符补全：alias. / table. → 该表字段
+    if (qualifier != null && qualifier.isNotEmpty) {
+      final fields = _columnsForQualifier(qualifier);
+      if (fields.isEmpty) return [];
+      if (wu.isEmpty) {
+        for (final f in fields) add(f);
+      } else {
+        for (final f in fields) {
+          if (f.toUpperCase().startsWith(wu)) add(f);
+        }
+        if (wu.length >= 2) {
+          for (final f in fields) {
+            if (f.toUpperCase().contains(wu)) add(f);
+          }
+        }
+      }
+      return out.take(12).toList();
+    }
+
+    // 2) 关键词
     for (final k in _keywords) {
       if (k.toUpperCase().startsWith(wu)) add(k);
     }
+    // 3) 表名
     for (final t in _tables) {
       if (t.toUpperCase().startsWith(wu)) add(t);
     }
@@ -250,6 +328,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
         if (_isSubsequence(wu, t.toUpperCase())) add(t);
       }
     }
+    // 4) 字段（上下文表 / SQL 中引用表的列）
     final fields = <String>{
       ..._contextColumns.map((c) => c.field),
       ..._sqlTableColumns.values.expand((c) => c.map((i) => i.field)),
@@ -503,13 +582,24 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     final text = _sql.text;
     final cursor = _sql.selection.baseOffset.clamp(0, text.length);
     final before = text.substring(0, cursor);
-    // 替换光标前最后一个词（含反引号）。
-    final replacement = RegExp(r'[^\s,()`]*$').firstMatch(before);
-    final start = replacement?.start ?? cursor;
-    final newBefore = before.replaceRange(start, before.length, word);
+    final (qualifier, _) = _tokenAt(before);
+    late final int start;
+    late final String inserted;
+    if (qualifier != null && qualifier.isNotEmpty) {
+      // 带限定符（如 a.）：只替换「.」之后的片段，保留 alias. 前缀。
+      final dotIdx = before.lastIndexOf('.');
+      start = dotIdx >= 0 ? dotIdx + 1 : cursor;
+      inserted = word;
+    } else {
+      // 替换光标前最后一个词（含反引号）。
+      final replacement = RegExp(r'[^\s,()`]*$').firstMatch(before);
+      start = replacement?.start ?? cursor;
+      inserted = '$word ';
+    }
+    final newBefore = before.replaceRange(start, before.length, inserted);
     final suffix = text.substring(cursor);
-    _sql.text = '$newBefore $suffix';
-    final newCursor = newBefore.length + 1;
+    _sql.text = '$newBefore$suffix';
+    final newCursor = newBefore.length;
     _sql.selection = TextSelection.fromPosition(TextPosition(offset: newCursor));
   }
 
