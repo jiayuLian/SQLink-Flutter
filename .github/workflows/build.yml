@@ -140,17 +140,6 @@ jobs:
         run: |
           mv apk/app-release.apk apk/SQLink-Flutter.apk
           ls -la apk ipa
-      - name: Create versioned release (history, notes auto-generated from commits)
-        uses: softprops/action-gh-release@v2
-        with:
-          # 只有真正的代码改动才会触发构建（README 已被 paths-ignore 排除），
-          # 因此这里为每次代码改动额外发布一个带版本号的历史发行版并保留。
-          tag_name: v${{ github.run_number }}
-          name: SQLink v${{ github.run_number }}
-          generate_release_notes: true
-          files: |
-            apk/SQLink-Flutter.apk
-            ipa/SQLink-Flutter.ipa
       - name: Remove previous latest release & tag (rolling build)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -194,7 +183,7 @@ jobs:
             - **Android**：下载 `SQLink-Flutter.apk`，允许「未知来源」后安装
             - **iOS**：用 **TrollStore** 打开 `SQLink-Flutter.ipa` 安装（未签名 IPA，安装时自动签名，无需 Apple ID）
 
-            > 本页为基础功能介绍。每次改动的具体内容见各「v<版本号>」发行版。
+            > 本页为基础功能介绍。更新记录（新增功能 / 修复 bug / 日期）见仓库 README 的「更新记录」章节。
           files: |
             apk/SQLink-Flutter.apk
             ipa/SQLink-Flutter.ipa

@@ -54,7 +54,7 @@ zip -r SQLink-Flutter.ipa Payload
 
 ## GitHub Actions 自动构建
 
-推送到 `main` 分支即自动构建并发布（单个 `latest` 标签，每次发布覆盖上一版；仅在真正修改代码/新增功能/修复 bug 时才另行发布带版本号的历史发行版）：
+推送到 `main` 分支即自动构建并发布（始终只有单个 `latest` 标签，每次发布覆盖上一版；更新记录见下方「更新记录」章节）：
 
 - `ubuntu-latest` 构建 **APK**：自动注入 Android 网络权限、设置 applicationId 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、minSdk 23
 - `macos-latest` 构建**未签名 IPA**：用 `flutter build ios --release --no-codesign` 跳过 Xcode 签名步骤（CI 无需任何 Apple 证书），仅设置 Bundle Identifier 为 `com.jiayu.sqlinkFlutter`、显示名 `SQLink`、放开 ATS 网络限制（`NSAllowsArbitraryLoads` / `NSAllowsLocalNetworking`）
@@ -76,3 +76,23 @@ zip -r SQLink-Flutter.ipa Payload
 
 - 不复制 Swift 版的账号 / 会员 / 后端激活体系（依赖私有后端 `sqlink-api`），本版**全功能免费开放**。
 - 表数据内联编辑基于「设置筛选或排序」后就地修改，未设置筛选时仅浏览、不直接改全表数据（与原 Swift 版基于主键的整行编辑略有不同）。
+
+## 更新记录
+
+> 仅记录真正的代码改动（新增功能 / 修复 bug）。文档与构建流程调整不在此列。
+
+- **2026-09-11**
+  - ✨ 新增：查询控制台 SQL 自动补全增强
+    - 输入框开头打字（如 `SEL`）即提示，不再空白
+    - 关键词支持多词短语：输入 `OR` 提示 `ORDER BY`，`SEL` 提示 `SELECT` / `SELECT *`
+    - 表名前缀 / 模糊匹配库中表（如 `lvv_c` 匹配 `lvv_user_config`、`lvv_exchange_record`）
+    - 表名出现在 SQL 中即加载其字段，便于表名后直接补全字段
+  - ✨ 新增：表别名 / 表名前缀字段补全（`alias.` / `table.` / `db.table.`）
+    - 解析 `FROM t a`、`JOIN t b`、`FROM t1 a, t2 b` 等别名写法
+    - 输入 `a.` / `b.` 即补全各自表的字段，服务于关联查询
+  - 🐞 修复：点击补全时误删别名前缀（`a.` 被删成 `id`，应为 `a.id`）
+
+- **2026-09-09**
+  - ✨ 新增：数据库列表 / 表列表顶部实时搜索（对齐 Swift 版 `.searchable`）
+  - 🐞 修复：新建 / 编辑连接中密码「眼睛」图标方向反了（睁眼时显示明文、闭眼时显示密文）
+  - 📄 文档：README 更新为技术说明（包名、产物名、错误分类、NAT64 兼容、权限、滑动样式等）
