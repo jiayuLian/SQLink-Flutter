@@ -152,6 +152,10 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final muted = TextStyle(
+      fontSize: 12,
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.table),
@@ -173,66 +177,88 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                         style: const TextStyle(color: Colors.red)),
                   ),
                 )
+              // 分组卡片版式（对齐 Swift TableDetailView 的 List + Section）。
               : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                   children: [
-                    _sectionHeader('结构（${_columns.length} 列）'),
-                    if (_columns.isEmpty)
-                      const ListTile(
-                        dense: true,
-                        title: Text('（无列信息）',
-                            style: TextStyle(color: Colors.grey)),
-                      ),
-                    for (final c in _columns) _columnTile(c, theme),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: _showDdl,
-                          icon: const Icon(Icons.description_outlined),
-                          label: const Text('查看建表 SQL'),
-                        ),
-                      ),
-                    ),
-                    const Divider(),
-                    if (_filterSummary.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: Text(
-                          _filterSummary,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ),
-                    ListTile(
-                      leading: const Icon(Icons.table_chart_outlined),
-                      title: const Text('查看数据'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _rowCount == null ? '加载中…' : '匹配 $_rowCount 条',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.6),
+                          _sectionHeader('结构（${_columns.length} 列）'),
+                          if (_columns.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                              child: Text('加载中…',
+                                  style: TextStyle(color: Colors.grey)),
+                            ),
+                          for (final c in _columns) _columnTile(c, theme),
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: _showDdl,
+                                icon: const Icon(Icons.description_outlined),
+                                label: const Text('查看建表 SQL'),
+                              ),
                             ),
                           ),
-                          const Icon(Icons.chevron_right),
                         ],
                       ),
-                      onTap: _openData,
                     ),
-                    const Divider(),
-                    ListTile(
-                      leading: const Icon(Icons.terminal),
-                      title: const Text('打开查询控制台'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _openConsole,
+                    if (_filterSummary.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        margin: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _filterSummary,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: ListTile(
+                        leading: const Icon(Icons.table_chart_outlined),
+                        title: const Text('查看数据'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _rowCount == null ? '加载中…' : '匹配 $_rowCount 条',
+                              style: muted,
+                            ),
+                            const Icon(Icons.chevron_right),
+                          ],
+                        ),
+                        onTap: _openData,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: ListTile(
+                        leading: const Icon(Icons.terminal),
+                        title: const Text('打开查询控制台'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _openConsole,
+                      ),
                     ),
                   ],
                 ),
@@ -240,7 +266,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
   }
 
   Widget _sectionHeader(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
         child: Text(
           title,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -405,18 +431,27 @@ class _DdlDialogState extends State<_DdlDialog> {
                     child: Text('加载失败：$_error',
                         style: const TextStyle(color: Colors.red)),
                   )
-                : GestureDetector(
-                    onScaleStart: (_) => _startScale = _scale,
-                    onScaleUpdate: (d) => setState(
-                        () => _scale = _clamp(_startScale * d.scale)),
-                    onDoubleTap: () => setState(() => _scale = 1.0),
-                    child: SizedBox(
-                      height: 320,
-                      child: SingleChildScrollView(
-                        child: Transform.scale(
-                          scale: _scale,
-                          alignment: Alignment.topLeft,
-                          child: SqlHighlighter(_display),
+                // 对齐 Swift：等宽高亮文本铺在次级背景色圆角卡片上（可缩放）。
+                : Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: GestureDetector(
+                      onScaleStart: (_) => _startScale = _scale,
+                      onScaleUpdate: (d) => setState(
+                          () => _scale = _clamp(_startScale * d.scale)),
+                      onDoubleTap: () => setState(() => _scale = 1.0),
+                      child: SizedBox(
+                        height: 320,
+                        child: SingleChildScrollView(
+                          child: Transform.scale(
+                            scale: _scale,
+                            alignment: Alignment.topLeft,
+                            child: SqlHighlighter(_display),
+                          ),
                         ),
                       ),
                     ),

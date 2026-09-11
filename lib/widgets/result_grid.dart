@@ -21,7 +21,7 @@ class ResultGridController extends ChangeNotifier {
 
 /// 查询结果表格（Navicat 风格，对齐 Swift ResultGridView）。
 /// 主键列（PRI/UNI）以 🔑 标记并以主题色高亮；单元格等宽字体、定宽列、隔行底色；
-/// 点按单元格弹出完整值并支持复制。
+/// 点按单元格弹出完整值并支持复制，长按可直接复制。
 /// 支持双指捏合缩放（0.6~3.0）+ 双击复位（对齐 Swift gridScale 手势）。
 class ResultGrid extends StatefulWidget {
   final List<String> columns;
@@ -92,18 +92,21 @@ class _ResultGridState extends State<ResultGrid> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkIndex = widget.primaryKey == null ? -1 : widget.columns.indexOf(widget.primaryKey!);
+    final pkIndex =
+        widget.primaryKey == null ? -1 : widget.columns.indexOf(widget.primaryKey!);
     const minW = 80.0;
     const maxW = 160.0;
     const mono = TextStyle(fontFamily: 'monospace');
 
+    // 表头（对齐 Swift ResultGridView.headerCell）：
+    // 非主键列 Color.gray.opacity(0.18)，主键列 accentColor.opacity(0.18)。
     Widget headerCell(String label, bool isPk) => Container(
           constraints: const BoxConstraints(minWidth: minW),
           width: maxW,
           padding: const EdgeInsets.all(6),
           color: isPk
-              ? scheme.primary.withValues(alpha: 0.22)
-              : scheme.primary.withValues(alpha: 0.10),
+              ? scheme.primary.withValues(alpha: 0.18)
+              : Colors.grey.withValues(alpha: 0.18),
           child: Text(
             label,
             style: mono.copyWith(fontSize: 13, fontWeight: FontWeight.bold),
@@ -111,13 +114,16 @@ class _ResultGridState extends State<ResultGrid> {
           ),
         );
 
-    Widget cell(String? v, bool isPk, int ri, int ci) {
+    // 数据单元格（对齐 Swift ResultGridView.resultCell）：
+    // 主键列 accentColor.opacity(0.10)；其余按 (行+列)%2==0 铺 Color.gray.opacity(0.04)。
+    Widget cell(String? v, String colName, bool isPk, int ri, int ci) {
       final stripe = (ri + ci) % 2 == 0;
       final bg = isPk
           ? scheme.primary.withValues(alpha: 0.10)
           : (stripe ? Colors.grey.withValues(alpha: isDark ? 0.12 : 0.04) : null);
       return GestureDetector(
-        onTap: () => _showCell(context, v),
+        onTap: () => _showCell(context, colName, v),
+        onLongPress: () => _copyCell(context, colName, v),
         child: Container(
           constraints: const BoxConstraints(minWidth: minW),
           width: maxW,
@@ -140,7 +146,8 @@ class _ResultGridState extends State<ResultGrid> {
     final header = Row(
       children: [
         for (var ci = 0; ci < widget.columns.length; ci++)
-          headerCell((ci == pkIndex ? '🔑 ' : '') + widget.columns[ci], ci == pkIndex),
+          headerCell(
+              (ci == pkIndex ? '🔑 ' : '') + widget.columns[ci], ci == pkIndex),
       ],
     );
 
@@ -152,7 +159,8 @@ class _ResultGridState extends State<ResultGrid> {
           Row(
             children: [
               for (var ci = 0; ci < widget.columns.length; ci++)
-                cell(widget.rows[ri][widget.columns[ci]], ci == pkIndex, ri, ci),
+                cell(widget.rows[ri][widget.columns[ci]], widget.columns[ci],
+                    ci == pkIndex, ri, ci),
             ],
           ),
       ],
@@ -189,30 +197,50 @@ class _ResultGridState extends State<ResultGrid> {
     );
   }
 
-  void _showCell(BuildContext context, String? value) {
+  /// 查看完整值（对齐 Swift CellValueSheet：标题为列名、正文等宽、底部「复制完整值」）。
+  void _showCell(BuildContext context, String column, String? value) {
+    final display = value == null ? 'NULL' : (value.isEmpty ? '空字符串' : value);
+    final copyText = value;
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('单元格值'),
-        content: SelectableText(
-          value ?? 'NULL',
-          style: const TextStyle(fontFamily: 'monospace'),
+      builder: (ctx) => AlertDialog(
+        title: Text(column),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              display,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+            ),
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              if (value != null) {
-                Clipboard.setData(ClipboardData(text: value));
-              }
-              Navigator.of(context).pop();
-            },
-            child: const Text('复制'),
+            onPressed: copyText == null
+                ? null
+                : () {
+                    Clipboard.setData(ClipboardData(text: copyText));
+                    Navigator.of(ctx).pop();
+                  },
+            child: const Text('复制完整值'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('完成'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 长按直接复制（对齐 Swift ResultGridView 的 contextMenu「复制值」）。
+  void _copyCell(BuildContext context, String column, String? value) {
+    if (value == null) return;
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已复制「$column」的值'),
+        duration: const Duration(seconds: 1),
       ),
     );
   }

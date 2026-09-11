@@ -54,6 +54,11 @@ class _FilterBuilderState extends State<FilterBuilder> {
         .toList();
     _sortField = widget.initialSortField;
     _sortDir = widget.initialSortDir;
+    // 对齐 Swift TableFilterView.onAppear：排序字段已不属于当前表时归零，
+    // 否则 DropdownButton 会因 value 不在 items 中触发断言崩溃。
+    if (_sortField.isNotEmpty && !_fieldNames.contains(_sortField)) {
+      _sortField = '';
+    }
     for (final c in _drafts) {
       _controllers[_keyFor(c)] = TextEditingController(text: c.value);
     }
@@ -201,7 +206,8 @@ class _FilterBuilderState extends State<FilterBuilder> {
                 Expanded(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    value: c.field.isEmpty ? null : c.field,
+                    // 字段不在当前表列中时回退为未选择，避免 DropdownButton 断言失败。
+                    value: _fieldNames.contains(c.field) ? c.field : null,
                     hint: const Text('字段'),
                     items: _fieldNames
                         .map((f) => DropdownMenuItem(value: f, child: Text(f)))
@@ -253,7 +259,10 @@ class _FilterBuilderState extends State<FilterBuilder> {
                 Expanded(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    value: _sortField.isEmpty ? null : _sortField,
+                    value:
+                        _sortField.isEmpty || !_fieldNames.contains(_sortField)
+                            ? null
+                            : _sortField,
                     hint: const Text('无'),
                     items: [
                       const DropdownMenuItem(value: '', child: Text('无')),

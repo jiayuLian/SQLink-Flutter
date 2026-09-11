@@ -89,14 +89,22 @@ class _TableDataScreenState extends State<TableDataScreen> {
     super.initState();
     _pageSize = 100;
     _loadColumns();
-    _load();
   }
+
+  /// 首帧前才拿到 Provider 里的每页条数：在这里做**唯一一次**引导加载，
+  /// 避免 initState 用默认 100 拉一遍、didChangeDependencies 再用设置值拉一遍，
+  /// 两个并发请求互相覆盖导致列表与页码错乱。
+  bool _bootstrapped = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final ps = Provider.of<AppSettings>(context, listen: false).pageSize;
     if (ps > 0) _pageSize = ps;
+    if (!_bootstrapped) {
+      _bootstrapped = true;
+      _load();
+    }
   }
 
   @override

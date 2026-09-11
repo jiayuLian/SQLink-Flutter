@@ -94,7 +94,8 @@ class _ConnectionCard extends StatelessWidget {
       ),
       child: Card(
         child: ListTile(
-          leading: const Icon(Icons.dns),
+          // 对齐 Swift ConnectionRow：图标用强调色。
+          leading: Icon(Icons.dns, color: Theme.of(context).colorScheme.primary),
           title: Text(profile.name.isEmpty ? profile.host : profile.name),
           subtitle: Text(
             '${profile.user}@${profile.host}:${profile.port}'
@@ -163,11 +164,13 @@ class _ConnectionCard extends StatelessWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
+    // 连接名为空时回退显示 host（对齐列表行/错误提示的展示口径）。
+    final label = profile.name.isEmpty ? profile.host : profile.name;
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('删除连接'),
-            content: Text('确定删除连接「${profile.name}」？密码也会一并清除。'),
+            content: Text('确定删除连接「$label」？密码也会一并清除。'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
@@ -191,6 +194,16 @@ class _ConnectionCard extends StatelessWidget {
 
   void _connect(BuildContext context) async {
     final scaffold = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    // 先弹 loading，再取密码建连；用标志位保证无论走哪条分支都只关一次，
+    // 避免中途 return 时留下一个吞掉点击的 loading 遮罩。
+    var dialogOpen = true;
+    void closeLoading() {
+      if (!dialogOpen) return;
+      dialogOpen = false;
+      nav.pop();
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -198,16 +211,15 @@ class _ConnectionCard extends StatelessWidget {
     );
     try {
       final pw = await SecureStorage.getPassword(profile.id) ?? '';
+      closeLoading();
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // 关闭 loading
-      await Navigator.of(context).push(
+      await nav.push(
         MaterialPageRoute(
           builder: (_) => ConnectionHomeScreen(profile: profile, password: pw),
         ),
       );
     } catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
+      closeLoading();
       // 去掉 Dart Exception 默认前缀，与测试按钮提示保持一致。
       final detail = e.toString();
       final msg = detail.startsWith('Exception: ')

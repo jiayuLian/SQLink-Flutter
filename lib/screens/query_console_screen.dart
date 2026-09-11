@@ -45,6 +45,10 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   // 自动从当前 SQL 中提取表名并加载列，用于字段补全（不依赖手动选上下文表）。
   final Map<String, List<ColumnInfo>> _sqlTableColumns = {};
 
+  /// 缓存的设置对象。dispose 时不能再通过 context 取 Provider，
+  /// 故在 initState 取一次并在整个生命周期复用。
+  late AppSettings _settings;
+
   // 可编辑结果集（对齐 Swift 的 edit-from-result）。
   bool _canEdit = false;
   bool _editMode = false;
@@ -64,6 +68,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   @override
   void initState() {
     super.initState();
+    _settings = Provider.of<AppSettings>(context, listen: false);
     _loadTables();
     _loadSavedSql();
     // 输入框变化时刷新候选提示。
@@ -129,6 +134,11 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   @override
   void dispose() {
+    // 对齐 Swift QueryConsoleView.onDisappear：退出控制台时保存当前 SQL。
+    // （仅表内入口按表记忆；dispose 不能 await，故不等待落盘结果。）
+    if (_rememberSqlByTable && _settings.autoSaveSQL) {
+      _settings.saveSQL(widget.db ?? '_', widget.defaultTable!, _sql.text);
+    }
     _sql.removeListener(_onSqlChanged);
     _sql.dispose();
     for (final c in _editControllers.values) c.dispose();
@@ -176,9 +186,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   Future<void> _loadSavedSql() async {
     if (!_rememberSqlByTable) return;
-    final settings = Provider.of<AppSettings>(context, listen: false);
-    if (!settings.autoSaveSQL) return;
-    final saved = await settings.getSavedSQL(widget.db ?? '_', widget.defaultTable!);
+    if (!_settings.autoSaveSQL) return;
+    final saved =
+        await _settings.getSavedSQL(widget.db ?? '_', widget.defaultTable!);
     if (saved != null && saved.isNotEmpty && mounted) {
       _sql.text = saved;
     }
@@ -186,9 +196,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   Future<void> _saveSqlIfNeeded() async {
     if (!_rememberSqlByTable) return;
-    final settings = Provider.of<AppSettings>(context, listen: false);
-    if (settings.autoSaveSQL) {
-      await settings.saveSQL(widget.db ?? '_', widget.defaultTable!, _sql.text);
+    if (_settings.autoSaveSQL) {
+      await _settings.saveSQL(
+          widget.db ?? '_', widget.defaultTable!, _sql.text);
     }
   }
 
@@ -357,8 +367,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     final sql = _sql.text.trim();
     if (sql.isEmpty) return;
     // 全局历史始终记录（对齐 Swift QueryHistory.add，不受 autoSaveSQL 影响）。
-    final settings = Provider.of<AppSettings>(context, listen: false);
-    await settings.addHistory(sql);
+    await _settings.addHistory(sql);
     await _saveSqlIfNeeded();
     setState(() {
       _running = true;
@@ -642,11 +651,10 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
   }
 
   void _showHistory() {
-    final settings = Provider.of<AppSettings>(context, listen: false);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => _HistoryPage(
-          history: settings.history,
+          history: _settings.history,
           onPick: (h) {
             _sql.text = h;
             _sql.selection = TextSelection.fromPosition(
@@ -654,11 +662,44 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
             );
             Navigator.of(ctx).pop();
           },
-          onClear: () => settings.clearHistory(),
+          onClear: () => _settings.clearHistory(),
         ),
       ),
     );
   }
+
+  /// SQL 输入框描边（对齐 Swift：圆角 8 + 灰色 30% 细线，聚焦时主题色）。
+  OutlineInputBorder _roundedBorder(ThemeData theme, {bool focused = false}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(
+          color: focused
+              ? theme.colorScheme.primary
+              : Colors.grey.withValues(alpha: 0.3),
+          width: focused ? 1.5 : 0.8,
+        ),
+      );
+
+  /// 补全候选 chip（对齐 Swift QueryConsoleView 的 suggestion 按钮样式）。
+  Widget _suggestionChip(String text, ThemeData theme) => InkWell(
+        onTap: () => _insertSuggestion(text),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -717,7 +758,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           isExpanded: true,
-                          value: _contextTable.isEmpty ? null : _contextTable,
+                          // 上下文表不在列表中时回退为「未选择」，避免 DropdownButton 断言失败。
+                          value:
+                              _tables.contains(_contextTable) ? _contextTable : null,
                           hint: const Text('上下文表', style: TextStyle(fontSize: 12)),
                           onChanged: (v) {
                             setState(() {
@@ -737,7 +780,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
               ],
             ),
           ),
-          // SQL 编辑框：带填充背景与主题自适应文字颜色，避免黑底看不清。
+          // SQL 编辑框（对齐 Swift TextEditor：等宽、圆角 8、灰色细描边）。
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: TextField(
@@ -750,29 +793,34 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                border: const OutlineInputBorder(),
+                fillColor: theme.colorScheme.surface,
+                contentPadding: const EdgeInsets.all(10),
+                border: _roundedBorder(theme),
+                enabledBorder: _roundedBorder(theme),
+                focusedBorder: _roundedBorder(theme, focused: true),
                 hintText: '输入 SQL，例如 SELECT 1',
-                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                hintStyle: TextStyle(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
               ),
             ),
           ),
         // 自动补全 chips（关键字 + 表名 + 上下文列）。
+        // 对齐 Swift：等宽字体、主题色 12% 底、圆角 8。
         if (_suggestions.isNotEmpty)
           SizedBox(
             height: 38,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              children: _suggestions
-                  .map((s) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        child: ActionChip(
-                          label: Text(s),
-                          onPressed: () => _insertSuggestion(s),
-                        ),
-                      ))
-                  .toList(),
+              children: [
+                for (final s in _suggestions)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _suggestionChip(s, theme),
+                    ),
+                  ),
+              ],
             ),
           ),
         const Divider(),
@@ -883,7 +931,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
             title: Text('$okCount 条语句执行成功（无结果集）'),
           ),
         if (isSingle && _editMode && single != null)
-          _buildEditableGrid()
+          // 对齐 Swift：编辑态表格固定 320 高（同时让内层横/纵向滚动生效）。
+          SizedBox(height: 320, child: _buildEditableGrid())
         else
           for (var i = 0; i < resultSets.length; i++)
             Card(
@@ -897,10 +946,15 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
-                  ResultGrid(
-                    columns: resultSets[i].columns,
-                    rows: resultSets[i].rows,
-                    primaryKey: isSingle ? _editPK : null,
+                  // 对齐 Swift ResultGridView 的 .frame(height: 320)：
+                  // 固定高度可避免与外层 ListView 形成嵌套纵向滚动、内层滚动失效。
+                  SizedBox(
+                    height: 320,
+                    child: ResultGrid(
+                      columns: resultSets[i].columns,
+                      rows: resultSets[i].rows,
+                      primaryKey: isSingle ? _editPK : null,
+                    ),
                   ),
                 ],
               ),
