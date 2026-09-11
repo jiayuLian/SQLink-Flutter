@@ -367,6 +367,11 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     final sql = _sql.text.trim();
     if (sql.isEmpty) return;
+    // 编辑态下直接重新执行：先走「取消编辑」路径收尾，释放每格一个的
+    // TextEditingController。旧实现只置 _editMode=false / _editingRows=[]，
+    // 控制器会遗留在 _editControllers 中，直到下次 _enterEdit 被无 dispose
+    // 地 clear 掉（每次都泄漏一批）。
+    if (_editMode) _cancelEdit();
     // 全局历史始终记录（对齐 Swift QueryHistory.add，不受 autoSaveSQL 影响）。
     await _settings.addHistory(sql);
     await _saveSqlIfNeeded();
@@ -515,6 +520,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     _editingRows = _editRowsOriginal
         .map((r) => _editColNames.map((c) => r[c]).toList())
         .toList();
+    // 防御：释放上一次可能残留的控制器（map 为空时不做任何事），
+    // 避免 TextEditingController 泄漏。
+    for (final c in _editControllers.values) c.dispose();
     _editControllers.clear();
     for (var ri = 0; ri < _editingRows.length; ri++) {
       for (var ci = 0; ci < _editColNames.length; ci++) {
@@ -751,6 +759,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     final resultSets = _outcomes?.where((o) => o.isResultSet).toList() ?? [];
     final isSingle = resultSets.length == 1;
     final theme = Theme.of(context);
+    // 只算一次：_suggestions 内部要跑别名正则与表名/字段匹配，
+    // 在 build 中重复取用会成倍消耗（每次按键都会重建）。
+    final suggestions = _suggestions;
     return Scaffold(
       appBar: AppBar(
         title: const Text('查询控制台'),
@@ -851,14 +862,14 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           ),
         // 自动补全 chips（关键字 + 表名 + 上下文列）。
         // 对齐 Swift：等宽字体、主题色 12% 底、圆角 8。
-        if (_suggestions.isNotEmpty)
+        if (suggestions.isNotEmpty)
           SizedBox(
             height: 38,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
-                for (final s in _suggestions)
+                for (final s in suggestions)
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
