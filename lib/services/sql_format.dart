@@ -12,8 +12,35 @@ String formatCreateTable(String raw) {
 
   final out = StringBuffer();
   var depth = 0;
-  for (var i = 0; i < compact.length; i++) {
+  final n = compact.length;
+  var i = 0;
+  while (i < n) {
     final c = compact[i];
+    final cu = compact.codeUnitAt(i);
+    // 引号内的内容整体跳过：字符串 '...' / "..."、反引号标识符 `...` 里的
+    // 括号与逗号不参与结构判断（否则 COMMENT '含(括号)' 会把层级算错）。
+    if (cu == 0x27 || cu == 0x22 || cu == 0x60) {
+      final start = i;
+      i++;
+      while (i < n) {
+        final ch = compact.codeUnitAt(i);
+        if (ch == 0x5C) {
+          i = i + 2 <= n ? i + 2 : n;
+          continue;
+        }
+        if (ch == cu) {
+          i++;
+          if (i < n && compact.codeUnitAt(i) == cu) {
+            i++; // '' 转义
+            continue;
+          }
+          break;
+        }
+        i++;
+      }
+      out.write(compact.substring(start, i));
+      continue;
+    }
     if (c == '(') {
       out.write('(');
       depth += 1;
@@ -27,6 +54,7 @@ String formatCreateTable(String raw) {
     } else {
       out.write(c);
     }
+    i++;
   }
 
   var s = out.toString();

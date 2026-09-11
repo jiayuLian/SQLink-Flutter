@@ -134,21 +134,50 @@ class MySQLService {
 
   /// 执行任意 SQL（支持多语句），返回全部结果集。
   /// 连接被服务器关闭时自动重连一次再试（对齐 Swift 的 withReconnect）。
+  ///
+  /// 断连检测两层兜底：
+  /// 1) 直接捕获 dart:io 的 [SocketException]（iOS/Android 后台挂起+锁屏回来后，
+  ///    socket 被系统/对端回收，写数据抛 broken pipe / connection reset 即此类）。
+  /// 2) 兜底按错误文案关键词判断，覆盖 mysql_client_plus 可能以普通 Exception 抛出的
+  ///    各种断连措辞（关键词扩到常见 iOS/驱动写法，避免漏接导致"写入数据失败"）。
   Future<List<ResultSetData>> execute(String sql) async {
     try {
       return await _executeOnce(sql);
+    } on SocketException {
+      if (_password != null) {
+        await reconnect();
+        return await _executeOnce(sql);
+      }
+      rethrow;
     } catch (e) {
       final msg = e.toString().toLowerCase();
-      if ((msg.contains('connection closed') ||
-              msg.contains('socket') ||
-              msg.contains('not connected') ||
-              msg.contains('write failed')) &&
-          _password != null) {
+      if (_password != null && _isConnectionLost(msg)) {
         await reconnect();
         return await _executeOnce(sql);
       }
       rethrow;
     }
+  }
+
+  /// 判断错误文案是否为连接断开类（用于触发重连重试）。
+  static bool _isConnectionLost(String msg) {
+    return msg.contains('connection closed') ||
+        msg.contains('socket') ||
+        msg.contains('not connected') ||
+        msg.contains('write failed') ||
+        msg.contains('write error') ||
+        msg.contains('broken pipe') ||
+        msg.contains('pipe') ||
+        msg.contains('reset by peer') ||
+        msg.contains('connection reset') ||
+        msg.contains('os error') ||
+        msg.contains('econnreset') ||
+        msg.contains('epipe') ||
+        msg.contains('remote host closed') ||
+        msg.contains('software caused') ||
+        msg.contains('closed') ||
+        msg.contains('eof') ||
+        msg.contains('tcp');
   }
 
   Future<void> reconnect() async {

@@ -443,7 +443,7 @@ class _DdlDialogState extends State<_DdlDialog> {
                           () => _scale = _clamp(_startScale * d.scale)),
                       onDoubleTap: () => setState(() => _scale = 1.0),
                       child: SizedBox(
-                        height: 320,
+                        height: MediaQuery.of(context).size.height * 0.62,
                         child: SingleChildScrollView(
                           child: SqlHighlighter(
                             _display,
