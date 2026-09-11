@@ -15,6 +15,28 @@ class FilterCondition {
   });
 }
 
+/// 表「筛选 & 排序」状态。结构页与数据页共享同一实例，改动互通（对齐 Swift
+/// TableDetailView ↔ TableDataView 通过 @Binding 共享筛选状态的做法）。
+class TableFilterState {
+  List<FilterCondition> conditions = [];
+  String? where;
+  String? order;
+  String sortField = '';
+  String sortDir = 'ASC';
+
+  bool get hasFilter =>
+      (where != null && where!.isNotEmpty) || (order != null && order!.isNotEmpty);
+
+  void clear() {
+    conditions = [];
+    where = null;
+    order = null;
+    sortField = '';
+    sortDir = 'ASC';
+  }
+}
+
+/// 运算符枚举按 Swift FilterOperator 的顺序排列（含 不开始于/不结束于/在列表/不在列表）。
 enum FilterOp {
   equal,
   notEqual,
@@ -25,51 +47,64 @@ enum FilterOp {
   contains,
   notContains,
   startsWith,
+  notStartsWith,
   endsWith,
+  notEndsWith,
   isNull,
   isNotNull,
   isEmpty,
   isNotEmpty,
+  inList,
+  notInList,
   custom,
 }
 
 extension FilterOpX on FilterOp {
+  /// 文案对齐 Swift FilterOperator.label。
   String get label {
     switch (this) {
       case FilterOp.equal:
-        return '=';
+        return '等于';
       case FilterOp.notEqual:
-        return '≠';
+        return '不等于';
       case FilterOp.lessThan:
-        return '<';
+        return '小于';
       case FilterOp.lessOrEqual:
-        return '≤';
+        return '小于等于';
       case FilterOp.greaterThan:
-        return '>';
+        return '大于';
       case FilterOp.greaterOrEqual:
-        return '≥';
+        return '大于等于';
       case FilterOp.contains:
         return '包含';
       case FilterOp.notContains:
         return '不包含';
       case FilterOp.startsWith:
-        return '开头是';
+        return '开始以';
+      case FilterOp.notStartsWith:
+        return '不开始于';
       case FilterOp.endsWith:
-        return '结尾是';
+        return '结束于';
+      case FilterOp.notEndsWith:
+        return '不结束于';
       case FilterOp.isNull:
-        return '为空(NULL)';
+        return '是 null';
       case FilterOp.isNotNull:
-        return '非空';
+        return '不是 null';
       case FilterOp.isEmpty:
-        return '为空串';
+        return '是空的';
       case FilterOp.isNotEmpty:
-        return '非空串';
+        return '不是空的';
+      case FilterOp.inList:
+        return '在列表';
+      case FilterOp.notInList:
+        return '不在列表';
       case FilterOp.custom:
-        return '自定义 SQL';
+        return '自定义';
     }
   }
 
-  /// 是否需要在 UI 中显示「值」输入框。
+  /// 是否需要在 UI 中显示「值」输入框（对齐 Swift FilterOperator.needsValue）。
   bool get needsValue =>
       this != FilterOp.isNull &&
       this != FilterOp.isNotNull &&
@@ -121,8 +156,12 @@ String _sqlPart(String f, FilterCondition c) {
       return "$f NOT LIKE '%${_like(c.value)}%' ESCAPE '\\\\'";
     case FilterOp.startsWith:
       return "$f LIKE '${_like(c.value)}%' ESCAPE '\\\\'";
+    case FilterOp.notStartsWith:
+      return "$f NOT LIKE '${_like(c.value)}%' ESCAPE '\\\\'";
     case FilterOp.endsWith:
       return "$f LIKE '%${_like(c.value)}' ESCAPE '\\\\'";
+    case FilterOp.notEndsWith:
+      return "$f NOT LIKE '%${_like(c.value)}' ESCAPE '\\\\'";
     case FilterOp.isNull:
       return '$f IS NULL';
     case FilterOp.isNotNull:
@@ -131,6 +170,14 @@ String _sqlPart(String f, FilterCondition c) {
       return "$f = ''";
     case FilterOp.isNotEmpty:
       return "$f != ''";
+    case FilterOp.inList:
+      final vals = _splitValues(c.value);
+      if (vals.isEmpty) return '';
+      return '$f IN (${vals.join(', ')})';
+    case FilterOp.notInList:
+      final vals = _splitValues(c.value);
+      if (vals.isEmpty) return '';
+      return '$f NOT IN (${vals.join(', ')})';
     case FilterOp.custom:
       return c.value;
   }
@@ -143,13 +190,22 @@ String? buildOrderBy(String field, String dir) {
   return '$f $d';
 }
 
+/// 「在列表 / 不在列表」：逗号分隔，逐项去空格后转义（对齐 Swift inList / notInList）。
+List<String> _splitValues(String v) => v
+    .split(',')
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .map(_quote)
+    .toList();
+
 String _quote(String v) {
   final e = v.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
   return "'$e'";
 }
 
+/// LIKE 字面量转义（对齐 Swift quoteLikeLiteral：先转义反斜杠，再转义引号与通配符）。
 String _like(String v) => v
     .replaceAll('\\', '\\\\')
-    .replaceAll("'", "''")
+    .replaceAll("'", "\\'")
     .replaceAll('%', r'\%')
     .replaceAll('_', r'\_');

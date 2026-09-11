@@ -668,6 +668,24 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('查询控制台'),
+        // 对齐 Swift QueryConsoleView：历史（时钟）与导出（菜单）放在导航栏。
+        actions: [
+          IconButton(
+            onPressed: _showHistory,
+            icon: const Icon(Icons.history),
+            tooltip: 'SQL 历史',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.ios_share),
+            tooltip: '导出',
+            enabled: resultSets.isNotEmpty,
+            onSelected: (v) => v == 'sql' ? _exportSql() : _exportCsv(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'csv', child: Text('导出 CSV')),
+              PopupMenuItem(value: 'sql', child: Text('导出 SQL')),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -776,23 +794,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
                     : const Icon(Icons.play_arrow),
                 label: Text(_running ? '执行中' : '运行'),
               ),
-              if (resultSets.isNotEmpty) ...[
-                IconButton(
-                  onPressed: _exportCsv,
-                  icon: const Icon(Icons.download),
-                  tooltip: '导出 CSV',
-                ),
-                IconButton(
-                  onPressed: _exportSql,
-                  icon: const Icon(Icons.table_view),
-                  tooltip: '导出 SQL',
-                ),
-              ],
-              IconButton(
-                onPressed: _showHistory,
-                icon: const Icon(Icons.history),
-                tooltip: 'SQL 历史',
-              ),
+              // 导出与历史已上移到导航栏（对齐 Swift），此处不再重复。
               if (_canEdit)
                 if (_editMode) ...[
                   TextButton.icon(
@@ -868,7 +870,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       );
     }
     if (_outcomes == null) {
-      return const Center(child: Text('执行查询后显示结果'));
+      return const Center(child: Text('运行 SQL 后在此显示结果'));
     }
     final resultSets = _outcomes!.where((o) => o.isResultSet).toList();
     final okCount = _outcomes!.where((o) => !o.isResultSet).length;

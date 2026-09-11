@@ -1,6 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// 结果表格缩放控制器：让外层（数据页 / 控制台底部工具栏）
+/// 能读取当前缩放比例并在点击「xx%」时复位（对齐 Swift gridScale 的 % 按钮）。
+class ResultGridController extends ChangeNotifier {
+  double _scale = 1.0;
+  double get scale => _scale;
+
+  static double _clamp(double v) => v < 0.6 ? 0.6 : (v > 3.0 ? 3.0 : v);
+
+  void setScale(double v) {
+    final nv = _clamp(v);
+    if ((nv - _scale).abs() < 0.001) return;
+    _scale = nv;
+    notifyListeners();
+  }
+
+  void reset() => setScale(1.0);
+}
+
 /// 查询结果表格（Navicat 风格，对齐 Swift ResultGridView）。
 /// 主键列（PRI/UNI）以 🔑 标记并以主题色高亮；单元格等宽字体、定宽列、隔行底色；
 /// 点按单元格弹出完整值并支持复制。
@@ -12,11 +30,15 @@ class ResultGrid extends StatefulWidget {
   /// 真实主键列名（PRI 优先，其次 UNI）；为 null 时不高亮。
   final String? primaryKey;
 
+  /// 可选控制器：外部可读取/复位缩放比例。
+  final ResultGridController? controller;
+
   const ResultGrid({
     super.key,
     required this.columns,
     required this.rows,
     this.primaryKey,
+    this.controller,
   });
 
   @override
@@ -27,6 +49,44 @@ class _ResultGridState extends State<ResultGrid> {
   // 表格缩放（对齐 Swift gridScale）。
   double _scale = 1.0;
   double _startScale = 1.0;
+
+  static double _clamp(double v) => v < 0.6 ? 0.6 : (v > 3.0 ? 3.0 : v);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller != null) _scale = widget.controller!.scale;
+    widget.controller?.addListener(_syncFromController);
+  }
+
+  @override
+  void didUpdateWidget(covariant ResultGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_syncFromController);
+      widget.controller?.addListener(_syncFromController);
+      if (widget.controller != null) _scale = widget.controller!.scale;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_syncFromController);
+    super.dispose();
+  }
+
+  void _syncFromController() {
+    final c = widget.controller;
+    if (c != null && (c.scale - _scale).abs() > 0.001) {
+      setState(() => _scale = c.scale);
+    }
+  }
+
+  void _applyScale(double v) {
+    final nv = _clamp(v);
+    setState(() => _scale = nv);
+    widget.controller?.setScale(nv);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,14 +136,9 @@ class _ResultGridState extends State<ResultGrid> {
       );
     }
 
+    // 对齐 Swift ResultGridView：不显示行号列，表头直接是列名。
     final header = Row(
       children: [
-        Container(
-          width: 44,
-          padding: const EdgeInsets.all(6),
-          color: scheme.primary.withValues(alpha: 0.10),
-          child: const Text('#', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
         for (var ci = 0; ci < widget.columns.length; ci++)
           headerCell((ci == pkIndex ? '🔑 ' : '') + widget.columns[ci], ci == pkIndex),
       ],
@@ -96,15 +151,6 @@ class _ResultGridState extends State<ResultGrid> {
         for (var ri = 0; ri < widget.rows.length; ri++)
           Row(
             children: [
-              Container(
-                width: 44,
-                padding: const EdgeInsets.all(6),
-                color: (ri % 2 == 0)
-                    ? Colors.grey.withValues(alpha: isDark ? 0.12 : 0.04)
-                    : null,
-                child: Text('${ri + 1}',
-                    style: TextStyle(color: Colors.grey.shade500)),
-              ),
               for (var ci = 0; ci < widget.columns.length; ci++)
                 cell(widget.rows[ri][widget.columns[ci]], ci == pkIndex, ri, ci),
             ],
@@ -124,11 +170,11 @@ class _ResultGridState extends State<ResultGrid> {
       onScaleStart: (_) => _startScale = _scale,
       onScaleUpdate: (d) {
         if (d.pointerCount >= 2) {
-          setState(() => _scale = (_startScale * d.scale).clamp(0.6, 3.0));
+          _applyScale(_startScale * d.scale);
         }
       },
       // 双击复位（对齐 Swift onTapGesture(count: 2) { gridScale = 1 }）。
-      onDoubleTap: () => setState(() => _scale = 1.0),
+      onDoubleTap: () => _applyScale(1.0),
       child: SingleChildScrollView(
         scrollDirection: Axis.vertical,
         child: SingleChildScrollView(

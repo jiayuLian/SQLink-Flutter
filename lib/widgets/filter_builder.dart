@@ -3,8 +3,10 @@ import '../models/connection.dart' show ColumnInfo;
 import '../models/filter_condition.dart';
 
 /// 结构化「筛选&排序」构建器（对齐 Swift 的 TableFilterView）。
-/// 以底部弹窗形式呈现：多条件（字段/运算符/值/AND·OR/启用）+ 排序；
-/// 点「应用」时按 Swift 的 buildWhereClause / buildOrderBy 逻辑拼出 WHERE / ORDER 字符串。
+/// 由调用方以**居中卡片弹窗**（showGeneralDialog + Center + 圆角 Material）承载，
+/// 与 Swift 的 filterOverlay 版式一致；本组件只负责卡片内部内容。
+/// 内容：多条件（启用/AND·OR/字段/运算符/值）+ 排序；点「应用」按 Swift 的
+/// buildWhereClause / buildOrderBy 拼出 WHERE / ORDER，随后自行关闭弹窗。
 class FilterBuilder extends StatefulWidget {
   final List<ColumnInfo> columns;
   final List<FilterCondition> initialConditions;
@@ -40,7 +42,7 @@ class _FilterBuilderState extends State<FilterBuilder> {
   @override
   void initState() {
     super.initState();
-    // 深拷贝草稿，避免直接改动外部传入的条件列表。
+    // 深拷贝草稿，避免直接改动外部传入的条件列表（未点「应用」不生效，对齐 Swift draft*）。
     _drafts = widget.initialConditions
         .map((c) => FilterCondition(
               field: c.field,
@@ -53,7 +55,7 @@ class _FilterBuilderState extends State<FilterBuilder> {
     _sortField = widget.initialSortField;
     _sortDir = widget.initialSortDir;
     for (final c in _drafts) {
-      _controllers[c.hashCode.toString()] = TextEditingController(text: c.value);
+      _controllers[_keyFor(c)] = TextEditingController(text: c.value);
     }
   }
 
@@ -76,7 +78,8 @@ class _FilterBuilderState extends State<FilterBuilder> {
       op: FilterOp.contains,
       value: '',
       enabled: true,
-      logic: _drafts.isEmpty ? FilterLogic.and : FilterLogic.and,
+      // 对齐 Swift：首条不显示 AND/OR 关系，其余默认 AND。
+      logic: FilterLogic.and,
     );
     _drafts.add(condition);
     _controllers[_keyFor(condition)] = TextEditingController(text: '');
@@ -91,76 +94,84 @@ class _FilterBuilderState extends State<FilterBuilder> {
     setState(() {});
   }
 
+  void _clearAll() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    _controllers.clear();
+    _drafts = [];
+    _sortField = '';
+    _sortDir = 'ASC';
+    setState(() {});
+  }
+
   void _apply() {
     final where = buildWhereClause(_drafts);
     final order = buildOrderBy(_sortField, _sortDir);
+    // 先交付结果，再关闭弹窗（对齐 Swift：变更落定后 dispatch 关闭）。
     widget.onApply(where, order, _drafts, _sortField, _sortDir);
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _headerBar(context),
-          const Divider(height: 1),
-          Flexible(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.add),
-                    title: const Text('添加筛选条件'),
-                    onTap: _add,
-                  ),
-                  for (var i = 0; i < _drafts.length; i++) _conditionRow(i),
-                  const Divider(),
-                  _sortSection(),
-                  const SizedBox(height: 12),
-                ],
-              ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _headerBar(context),
+        const Divider(height: 1),
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.add),
+                  title: const Text('添加筛选条件'),
+                  onTap: _add,
+                ),
+                for (var i = 0; i < _drafts.length; i++) _conditionRow(i),
+                const Divider(),
+                _sortSection(),
+                const SizedBox(height: 12),
+              ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerBar(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          const Spacer(),
+          Text('筛选 & 排序', style: theme.textTheme.titleMedium),
+          const Spacer(),
+          Row(
+            children: [
+              TextButton(
+                onPressed: _clearAll,
+                child: const Text('清除'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _apply,
+                child: const Text('应用'),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-
-  Widget _headerBar(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            const Spacer(),
-            Text('筛选 & 排序', style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () {
-                    for (final c in _controllers.values) c.dispose();
-                    _controllers.clear();
-                    _drafts = [];
-                    _sortField = '';
-                    _sortDir = 'ASC';
-                    setState(() {});
-                  },
-                  child: const Text('清除'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _apply,
-                  child: const Text('应用'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
 
   Widget _conditionRow(int i) {
     final c = _drafts[i];
@@ -268,4 +279,44 @@ class _FilterBuilderState extends State<FilterBuilder> {
           ],
         ),
       );
+}
+
+/// 以「居中卡片 + 半透明遮罩」方式弹出筛选&排序弹窗（对齐 Swift filterOverlay：
+/// 遮罩点击关闭、卡片圆角、最高 85% 屏幕高度）。
+Future<void> showFilterOverlay(
+  BuildContext context, {
+  required Widget child,
+}) {
+  return showGeneralDialog(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '筛选 & 排序',
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    transitionDuration: const Duration(milliseconds: 120),
+    pageBuilder: (ctx, _, __) {
+      final maxH = MediaQuery.of(ctx).size.height * 0.85;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxH),
+            child: Material(
+              color: Theme.of(ctx).colorScheme.surface,
+              elevation: 10,
+              clipBehavior: Clip.antiAlias,
+              borderRadius: BorderRadius.circular(12),
+              child: child,
+            ),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (ctx, anim, _, page) => FadeTransition(
+      opacity: anim,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.96, end: 1.0).animate(anim),
+        child: page,
+      ),
+    ),
+  );
 }

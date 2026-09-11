@@ -5,22 +5,28 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/mysql_service.dart';
 import '../models/connection.dart' show ColumnInfo;
-import '../models/filter_condition.dart' show FilterCondition;
+import '../models/filter_condition.dart';
 import '../services/csv_export.dart';
 import '../settings/app_settings.dart';
 import '../widgets/result_grid.dart';
 import '../widgets/filter_builder.dart';
-import '../screens/query_console_screen.dart';
 
+/// 表数据页（对齐 Swift TableDataView）——进入表的**第二级**。
+/// 版式与 Swift 一致：导航栏左侧「返回 + 筛选&排序」，右侧「编辑 / 导出」
+/// （编辑态为「取消 / 保存」）；顶部状态条「共 N 条 · 第 x/y 页」；
+/// 底部「上一页 / 页码 / 下一页 + N 条/页 + 缩放%」。
+/// 筛选&排序状态由上层 [TableDetailScreen] 持有并共享（对齐 Swift @Binding）。
 class TableDataScreen extends StatefulWidget {
   final MySQLService service;
   final String db;
   final String table;
+  final TableFilterState filter;
   const TableDataScreen({
     super.key,
     required this.service,
     required this.db,
     required this.table,
+    required this.filter,
   });
 
   @override
@@ -30,17 +36,14 @@ class TableDataScreen extends StatefulWidget {
 class _TableDataScreenState extends State<TableDataScreen> {
   ResultSetData? _data;
   List<ColumnInfo> _columns = [];
-  int _total = 0;
-  int _offset = 0;
+  int _rowCount = 0;
+  int _page = 1;
   bool _loading = false;
   String? _error;
 
-  // 筛选 & 排序（对齐 Swift 的 activeWhere / activeOrderBy）
-  List<FilterCondition> _conditions = [];
-  String? _activeWhere;
-  String? _activeOrderBy;
-  String _sortField = '';
-  String _sortDir = 'ASC';
+  final ResultGridController _gridController = ResultGridController();
+
+  late int _pageSize;
 
   // 行内编辑模式（对齐 Swift TableDataView 的 edit mode）
   bool _editMode = false;
@@ -53,8 +56,6 @@ class _TableDataScreenState extends State<TableDataScreen> {
   // 编辑态单元格输入框控制器，按 "$ri-$ci" 持有，避免每次按键 setState 重建
   // DataTable 导致 TextFormField(initialValue) 光标跳到末尾（同筛选器焦点问题）。
   final Map<String, TextEditingController> _editControllers = {};
-
-  late int _pageSize;
 
   /// 主键：优先 PRI，其次 UNI（对齐 Swift 的 primaryKey 判定）。
   String? _primaryKey() {
@@ -74,6 +75,15 @@ class _TableDataScreenState extends State<TableDataScreen> {
     return i < 0 ? -1 : i;
   }
 
+  int get _ps => _pageSize > 0 ? _pageSize : 100;
+
+  /// 总页数（对齐 Swift maxPage）。
+  int get _maxPage =>
+      _rowCount <= 0 ? 1 : ((_rowCount + _ps - 1) ~/ _ps);
+
+  /// 是否已应用筛选或排序（对齐 Swift hasFilterCondition）。
+  bool get _hasFilter => widget.filter.hasFilter;
+
   @override
   void initState() {
     super.initState();
@@ -85,13 +95,17 @@ class _TableDataScreenState extends State<TableDataScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _pageSize = Provider.of<AppSettings>(context, listen: false).pageSize;
+    final ps = Provider.of<AppSettings>(context, listen: false).pageSize;
+    if (ps > 0) _pageSize = ps;
   }
 
   @override
   void dispose() {
-    for (final c in _editControllers.values) c.dispose();
+    for (final c in _editControllers.values) {
+      c.dispose();
+    }
     _editControllers.clear();
+    _gridController.dispose();
     super.dispose();
   }
 
@@ -107,33 +121,39 @@ class _TableDataScreenState extends State<TableDataScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final ps = _pageSize > 0 ? _pageSize : 100;
-      final data = await widget.service.fetchTable(
-        widget.db,
-        widget.table,
-        limit: ps,
-        offset: _offset,
-        where: _activeWhere,
-        order: _activeOrderBy,
-      );
-      // 计数失败不影响数据展示：用当前页行数兜底。
-      int total;
+      final ps = _ps;
+      // 先取总数用于分页；失败则退化为单页。
+      int? total;
       try {
         total = await widget.service.countTable(
           widget.db,
           widget.table,
-          where: _activeWhere,
+          where: widget.filter.where,
         );
       } catch (_) {
-        total = data.isResultSet ? data.rows.length : 0;
+        total = null;
       }
-      if (mounted) {
-        setState(() {
-          _data = data;
-          _total = total;
-          _error = null;
-        });
-      }
+      final pages = (total == null || total <= 0) ? 1 : ((total + ps - 1) ~/ ps);
+      var page = _page < 1 ? 1 : _page;
+      if (page > pages) page = pages;
+      final offset = (page - 1) * ps;
+
+      final data = await widget.service.fetchTable(
+        widget.db,
+        widget.table,
+        limit: ps,
+        offset: offset,
+        where: widget.filter.where,
+        order: widget.filter.order,
+      );
+      if (!mounted) return;
+      setState(() {
+        _page = page;
+        _data = data;
+        _rowCount =
+            total ?? (offset + (data.isResultSet ? data.rows.length : 0));
+        _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -141,22 +161,19 @@ class _TableDataScreenState extends State<TableDataScreen> {
     }
   }
 
-  void _exportCsv() {
-    if (_data == null || !_data!.isResultSet) return;
-    final csv = toCsv(_data!.columns, _data!.rows);
-    Share.shareXFiles(
-      [XFile.fromData(utf8.encode(csv), name: '${widget.table}.csv', mimeType: 'text/csv')],
-      subject: '${widget.db}.${widget.table}',
-    );
+  void _changePageSize(int v) {
+    final settings = Provider.of<AppSettings>(context, listen: false);
+    settings.setPageSize(v);
+    setState(() {
+      _pageSize = v;
+      _page = 1;
+    });
+    _load();
   }
 
-  void _exportSql() {
-    if (_data == null || !_data!.isResultSet) return;
-    final sql = toSql(widget.table, _data!.columns, _data!.rows);
-    Share.shareXFiles(
-      [XFile.fromData(utf8.encode(sql), name: '${widget.table}.sql', mimeType: 'text/sql')],
-      subject: '${widget.db}.${widget.table}',
-    );
+  void _gotoPage(int page) {
+    setState(() => _page = page);
+    _load();
   }
 
   // ---- 点击标题显示完整表名 ----
@@ -183,67 +200,46 @@ class _TableDataScreenState extends State<TableDataScreen> {
     );
   }
 
-  // ---- 表结构：只保留「建表 SQL」（按你要求去掉列信息列表） ----
-  Future<void> _showSchema() async {
-    final ddl = await widget.service.showCreateTable(widget.db, widget.table);
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Expanded(child: Text('${widget.db}.${widget.table}'))
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: _SqlHighlighter(ddl.isEmpty ? '（无建表语句）' : ddl),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: ddl));
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('复制'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
+  void _exportCsv() {
+    if (_data == null || !_data!.isResultSet) return;
+    final csv = toCsv(_data!.columns, _data!.rows);
+    Share.shareXFiles(
+      [
+        XFile.fromData(utf8.encode(csv),
+            name: '${widget.table}.csv', mimeType: 'text/csv')
+      ],
+      subject: '${widget.db}.${widget.table}',
     );
   }
 
-  // ---- 结构化筛选 & 排序 ----
+  void _exportSql() {
+    if (_data == null || !_data!.isResultSet) return;
+    final sql = toSql(widget.table, _data!.columns, _data!.rows);
+    Share.shareXFiles(
+      [
+        XFile.fromData(utf8.encode(sql),
+            name: '${widget.table}.sql', mimeType: 'text/sql')
+      ],
+      subject: '${widget.db}.${widget.table}',
+    );
+  }
+
+  // ---- 结构化筛选 & 排序（居中卡片弹窗，对齐 Swift filterOverlay） ----
   void _openFilter() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => FilterBuilder(
+    showFilterOverlay(
+      context,
+      child: FilterBuilder(
         columns: _columns,
-        initialConditions: _conditions,
-        initialSortField: _sortField,
-        initialSortDir: _sortDir,
+        initialConditions: widget.filter.conditions,
+        initialSortField: widget.filter.sortField,
+        initialSortDir: widget.filter.sortDir,
         onApply: (where, order, conditions, sf, sd) {
-          _conditions = conditions
-              .map((c) => FilterCondition(
-                    field: c.field,
-                    op: c.op,
-                    value: c.value,
-                    enabled: c.enabled,
-                    logic: c.logic,
-                  ))
-              .toList();
-          _activeWhere = where;
-          _activeOrderBy = order;
-          _sortField = sf;
-          _sortDir = sd;
-          _offset = 0;
-          Navigator.of(context).pop();
+          widget.filter.conditions = conditions;
+          widget.filter.where = where;
+          widget.filter.order = order;
+          widget.filter.sortField = sf;
+          widget.filter.sortDir = sd;
+          _page = 1;
           _load();
         },
       ),
@@ -273,7 +269,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
   void _cancelEdit() {
     _editMode = false;
     _editing = [];
-    for (final c in _editControllers.values) c.dispose();
+    for (final c in _editControllers.values) {
+      c.dispose();
+    }
     _editControllers.clear();
     _hasChanges = false;
     _editMessage = null;
@@ -285,7 +283,8 @@ class _TableDataScreenState extends State<TableDataScreen> {
 
   // 正确性优先：先转义反斜杠再转义单引号（与 csv_export.toSql 一致），
   // 否则含 \ 或 \' 的单元格值在 MySQL 默认 SQL 模式下会破坏 UPDATE 语句。
-  String _quoteValue(String v) => "'${v.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'";
+  String _quoteValue(String v) =>
+      "'${v.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'";
 
   Future<void> _saveEdits() async {
     final pk = _primaryKey();
@@ -325,7 +324,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
         });
       }
       // 编辑态结束，释放所有单元格控制器，避免泄漏。
-      for (final c in _editControllers.values) c.dispose();
+      for (final c in _editControllers.values) {
+        c.dispose();
+      }
       _editControllers.clear();
       await _load();
     } catch (e) {
@@ -337,77 +338,67 @@ class _TableDataScreenState extends State<TableDataScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ps = _pageSize > 0 ? _pageSize : 100;
-    final page = _offset ~/ ps + 1;
-    final totalPages = (_total / ps).ceil();
-    final pkOk = _primaryKey() != null;
-    final hasFilter = _activeWhere != null || _activeOrderBy != null;
-
+    final ps = _ps;
+    final pk = _primaryKey();
+    final pkOk = pk != null;
+    final hasFilter = _hasFilter;
     final fullTitle = '${widget.db}.${widget.table}';
+
     return Scaffold(
       appBar: AppBar(
+        // 对齐 Swift TableDataView：左侧「返回 + 筛选&排序」，右侧「编辑 / 导出」。
+        automaticallyImplyLeading: false,
+        leadingWidth: 112,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: '返回',
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: '筛选&排序',
+              onPressed: _editMode ? null : _openFilter,
+            ),
+          ],
+        ),
         title: GestureDetector(
           onTap: () => _showFullTableName(fullTitle),
           child: Tooltip(
             message: fullTitle,
             child: Text(
-              fullTitle,
+              widget.table,
               overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.schema),
-            tooltip: '结构',
-            onPressed: _editMode ? null : _showSchema,
-          ),
-          IconButton(
-            icon: const Icon(Icons.terminal),
-            tooltip: '查询控制台',
-            onPressed: _editMode
-                ? null
-                : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => QueryConsoleScreen(
-                          service: widget.service,
-                          db: widget.db,
-                          defaultTable: widget.table,
-                        ),
-                      ),
-                    ),
-          ),
           if (_editMode) ...[
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: '取消',
+            TextButton(
               onPressed: _saving ? null : _cancelEdit,
+              child: const Text('取消'),
             ),
-            IconButton(
-              icon: _saving
+            TextButton(
+              onPressed: (_hasChanges && !_saving) ? _saveEdits : null,
+              child: _saving
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.save),
-              tooltip: '保存',
-              onPressed: (_hasChanges && !_saving) ? _saveEdits : null,
+                  : const Text('保存'),
             ),
           ] else ...[
             if (pkOk && hasFilter)
               IconButton(
                 icon: const Icon(Icons.edit),
                 tooltip: '编辑',
-                onPressed: _data?.isResultSet ?? false ? _enterEdit : null,
+                onPressed: (_data?.isResultSet ?? false) ? _enterEdit : null,
               ),
-            IconButton(
-              icon: const Icon(Icons.filter_alt),
-              tooltip: '筛选 & 排序',
-              onPressed: !_editMode ? _openFilter : null,
-            ),
             PopupMenuButton<String>(
-              icon: const Icon(Icons.download),
+              icon: const Icon(Icons.ios_share),
               tooltip: '导出',
               enabled: _data?.isResultSet ?? false,
               onSelected: (v) => v == 'sql' ? _exportSql() : _exportCsv(),
@@ -421,116 +412,137 @@ class _TableDataScreenState extends State<TableDataScreen> {
       ),
       body: Column(
         children: [
-          if (hasFilter)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                children: [
-                  Chip(
-                    label: Text(
-                      [
-                        if (_activeWhere != null) '已筛选',
-                        if (_activeOrderBy != null)
-                          '排序：$_sortField ${_sortDir == 'DESC' ? '降序' : '升序'}',
-                      ].join('，'),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    deleteIcon: const Icon(Icons.clear, size: 16),
-                    onDeleted: () {
-                      _conditions = [];
-                      _activeWhere = null;
-                      _activeOrderBy = null;
-                      _sortField = '';
-                      _offset = 0;
-                      _load();
-                    },
+          // 顶部状态条（对齐 Swift：左「共 N 条 · 第 x/y 页」，右编辑态提示）
+          Container(
+            color: Colors.grey.withValues(alpha: 0.06),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                Text(
+                  '共 $_rowCount 条 · 第 $_page/$_maxPage 页',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const Spacer(),
+                if (_editMode && !pkOk)
+                  const Text(
+                    '⚠ 无主键/唯一键，不可保存',
+                    style: TextStyle(fontSize: 11, color: Colors.orange),
+                    maxLines: 1,
                   ),
-                ],
-              ),
+              ],
             ),
+          ),
           if (_editMessage != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(_editMessage!,
-                  style: const TextStyle(color: Colors.green, fontSize: 12)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(_editMessage!,
+                    style: const TextStyle(color: Colors.green, fontSize: 12)),
+              ),
             ),
           if (_editError != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(_editError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(_editError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12)),
+              ),
             ),
-          if (!_editMode && !pkOk)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Text('⚠ 无主键/唯一键，不可编辑',
-                  style: TextStyle(color: Colors.orange, fontSize: 12)),
-            ),
-          if (!_editMode && pkOk && !hasFilter)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Text('⚠ 请先设置筛选或排序后再编辑',
-                  style: TextStyle(color: Colors.orange, fontSize: 12)),
-            ),
-          const Divider(),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
                     ? Center(
-                        child: Text('错误：$_error',
-                            style: const TextStyle(color: Colors.red)))
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('错误：$_error',
+                              style: const TextStyle(color: Colors.red)),
+                        ),
+                      )
                     : _data != null && _data!.isResultSet
                         ? (_editMode
                             ? _buildEditableGrid()
                             : ResultGrid(
                                 columns: _data!.columns,
                                 rows: _data!.rows,
-                                primaryKey: _primaryKey(),
+                                primaryKey: pk,
+                                controller: _gridController,
                               ))
                         : const Center(child: Text('无数据')),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: (_offset >= ps && !_editMode)
-                      ? () {
-                          _offset -= ps;
-                          _load();
-                        }
-                      : null,
-                ),
-                Text('第 $page / ${totalPages == 0 ? 1 : totalPages} 页 · 共 $_total 行'),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: (_offset + ps < _total && !_editMode)
-                      ? () {
-                          _offset += ps;
-                          _load();
-                        }
-                      : null,
-                ),
-                PopupMenuButton<int>(
-                  icon: const Icon(Icons.view_column),
-                  tooltip: '每页条数',
-                  initialValue: ps,
-                  onSelected: (v) {
-                    _pageSize = v;
-                    _offset = 0;
-                    _load();
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 50, child: Text('每页 50 条')),
-                    PopupMenuItem(value: 100, child: Text('每页 100 条')),
-                    PopupMenuItem(value: 200, child: Text('每页 200 条')),
-                    PopupMenuItem(value: 500, child: Text('每页 500 条')),
-                  ],
-                ),
-              ],
+          const Divider(height: 1),
+          // 底部分页栏（对齐 Swift：上一页 / 页码 / 下一页 + N 条/页 + 缩放%）
+          ListenableBuilder(
+            listenable: _gridController,
+            builder: (context, _) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: (_page > 1 && !_loading && !_editMode)
+                        ? () => _gotoPage(_page - 1)
+                        : null,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chevron_left, size: 18),
+                        Text('上一页'),
+                      ],
+                    ),
+                  ),
+                  Text('$_page / $_maxPage',
+                      style: const TextStyle(fontSize: 12)),
+                  TextButton(
+                    onPressed: (_page < _maxPage && !_loading && !_editMode)
+                        ? () => _gotoPage(_page + 1)
+                        : null,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('下一页'),
+                        Icon(Icons.chevron_right, size: 18),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  PopupMenuButton<int>(
+                    tooltip: '每页条数',
+                    onSelected: _changePageSize,
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 50, child: Text('50 条/页')),
+                      PopupMenuItem(value: 100, child: Text('100 条/页')),
+                      PopupMenuItem(value: 200, child: Text('200 条/页')),
+                      PopupMenuItem(value: 500, child: Text('500 条/页')),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('$ps 条/页',
+                              style: const TextStyle(fontSize: 12)),
+                          const Icon(Icons.arrow_drop_down, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_gridController.scale != 1)
+                    TextButton(
+                      onPressed: _gridController.reset,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.refresh, size: 16),
+                          Text('${(_gridController.scale * 100).round()}%',
+                              style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -543,7 +555,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
     final cols = _data!.columns;
     final pkIndex = _pkIndex;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
+    final pkBg = isDark
+        ? Colors.amber.shade900.withValues(alpha: 0.35)
+        : Colors.amber.shade100;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
@@ -595,64 +609,5 @@ class _TableDataScreenState extends State<TableDataScreen> {
         ),
       ),
     );
-  }
-}
-
-/// 简单的 SQL 语法高亮组件（给建表 SQL 加关键词/字符串/标识符颜色）。
-class _SqlHighlighter extends StatelessWidget {
-  final String sql;
-  const _SqlHighlighter(this.sql);
-
-  static const _keywords = {
-    'CREATE', 'TABLE', 'PRIMARY', 'KEY', 'NOT', 'NULL', 'AUTO_INCREMENT',
-    'DEFAULT', 'UNIQUE', 'INDEX', 'FOREIGN', 'REFERENCES', 'ON', 'DELETE',
-    'UPDATE', 'CASCADE', 'SET', 'ENGINE', 'CHARSET', 'COLLATE', 'COMMENT',
-    'VARCHAR', 'INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'INTEGER',
-    'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'CHAR', 'TEXT', 'LONGTEXT',
-    'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIME', 'JSON', 'UNSIGNED',
-    'IF', 'EXISTS', 'DROP', 'ALTER', 'ADD', 'MODIFY', 'COLUMN', 'CONSTRAINT',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final plainStyle = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: 12,
-      color: theme.colorScheme.onSurface,
-    );
-
-    TextSpan span(String text, Color color, {bool bold = false}) =>
-        TextSpan(
-          text: text,
-          style: plainStyle.copyWith(
-            color: color,
-            fontWeight: bold ? FontWeight.bold : null,
-          ),
-        );
-
-    final spans = <TextSpan>[];
-    final regex = RegExp(r"(\s+)|('[^']*')|(`[^`]+`)|(\w+)|(.+)");
-    for (final m in regex.allMatches(sql)) {
-      final text = m.group(0)!;
-      if (m.group(1) != null) {
-        spans.add(span(text, theme.colorScheme.onSurface));
-      } else if (m.group(2) != null) {
-        spans.add(span(text, isDark ? Colors.lightGreen : Colors.green));
-      } else if (m.group(3) != null) {
-        spans.add(span(text, isDark ? Colors.orange.shade300 : Colors.orange.shade800));
-      } else if (m.group(4) != null) {
-        if (_keywords.contains(text.toUpperCase())) {
-          spans.add(span(text, isDark ? Colors.cyan.shade300 : Colors.blue, bold: true));
-        } else {
-          spans.add(span(text, theme.colorScheme.onSurface));
-        }
-      } else {
-        spans.add(span(text, theme.colorScheme.onSurface));
-      }
-    }
-
-    return RichText(text: TextSpan(children: spans, style: plainStyle));
   }
 }

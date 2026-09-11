@@ -6,22 +6,22 @@ import '../services/connection_store.dart';
 import '../services/secure_storage.dart';
 import 'connection_edit_screen.dart';
 import 'connection_home_screen.dart';
-import 'settings_screen.dart';
 
 class ConnectionsScreen extends StatelessWidget {
   const ConnectionsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // 对齐 Swift ConnectionsView：新增入口在导航栏右上角「+」；「我的」为独立底部标签。
     return Scaffold(
       appBar: AppBar(
         title: const Text('SQLink'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: '设置',
+            icon: const Icon(Icons.add),
+            tooltip: '新增连接',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              MaterialPageRoute(builder: (_) => const ConnectionEditScreen()),
             ),
           ),
         ],
@@ -30,7 +30,7 @@ class ConnectionsScreen extends StatelessWidget {
         builder: (context, store, _) {
           if (store.connections.isEmpty) {
             return const Center(
-              child: Text('还没有连接，点右下角 + 添加一个 MySQL 连接'),
+              child: Text('还没有连接，点右上角 + 添加一个'),
             );
           }
           return ListView.separated(
@@ -44,13 +44,6 @@ class ConnectionsScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: '新增连接',
-        child: const Icon(Icons.add),
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ConnectionEditScreen()),
-        ),
-      ),
     );
   }
 }
@@ -61,7 +54,7 @@ class _ConnectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 对齐 Swift 版 ConnectionsView.swipeActions：
+    // 对齐 Swift ConnectionsView.swipeActions：
     // 左滑（end）露出“编辑 + 删除”两个窄按钮；右滑（start）露出“编辑”。
     // 卡片内容始终可见，不会被整行红色背景遮住。
     return Slidable(
@@ -101,12 +94,13 @@ class _ConnectionCard extends StatelessWidget {
       ),
       child: Card(
         child: ListTile(
-          leading: const Icon(Icons.storage),
+          leading: const Icon(Icons.dns),
           title: Text(profile.name.isEmpty ? profile.host : profile.name),
           subtitle: Text(
             '${profile.user}@${profile.host}:${profile.port}'
             '${profile.database.isNotEmpty ? ' / ${profile.database}' : ''}',
           ),
+          // 对齐 Swift ConnectionRow：TLS 锁图标 + 行内铅笔按钮。
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -115,9 +109,46 @@ class _ConnectionCard extends StatelessWidget {
                   message: '已启用 SSL 加密',
                   child: Icon(Icons.lock, size: 18, color: Colors.green),
                 ),
+              IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: '编辑',
+                onPressed: () => _openEdit(context),
+              ),
             ],
           ),
           onTap: () => _connect(context),
+          // 对齐 Swift ConnectionRow 的 .contextMenu：长按弹出「编辑 / 删除」。
+          onLongPress: () => _showContextMenu(context),
+        ),
+      ),
+    );
+  }
+
+  /// 长按菜单（对齐 Swift 的 contextMenu）。
+  void _showContextMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('编辑'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _openEdit(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _confirmDelete(context);
+              },
+            ),
+          ],
         ),
       ),
     );

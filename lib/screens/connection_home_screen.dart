@@ -86,7 +86,13 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
     return Scaffold(
       body: DatabaseBrowserScreen(
         service: _service,
+        // 对齐 Swift DatabaseBrowserView：库列表标题为连接名。
+        title: widget.profile.name.isEmpty
+            ? widget.profile.host
+            : widget.profile.name,
         db: defaultDb.isNotEmpty ? defaultDb : null,
+        // 用默认库直入表列表时，上游没有库列表可切换，故不出「切换库」。
+        showSwitchDb: false,
       ),
     );
   }
