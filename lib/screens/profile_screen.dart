@@ -1,15 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../services/update_service.dart';
 import '../settings/app_settings.dart';
+import '../widgets/update_dialog.dart';
 
 /// 「我的」标签页（对齐 Swift ProfileView 的版式：分组卡片 + 外观 / 关于）。
 /// 说明：Flutter 版按用户要求去掉了账号 / 会员 / 激活体系，故此处不含账号区。
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
   static const _authorWeChat = 'cute6697';
   static const _authorEmail = 'lianjiayu998@163.com';
+
+  /// 本机版本（形如 `1.0.0 (123)`），读取完成前显示占位。
+  String _versionLabel = '';
+
+  /// 是否正在检查更新。
+  bool _checking = false;
+
+  /// 上次检查是否发现有新版本（用于在「检查更新」行右侧提示）。
+  bool _hasUpdate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final local = await UpdateService.localVersion();
+    if (!mounted) return;
+    setState(() => _versionLabel = '${local.version} (${local.build})');
+  }
+
+  /// 用户主动点「检查更新」：无论结果如何都要给一句反馈，不静默。
+  Future<void> _checkUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final result = await UpdateService.check();
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _hasUpdate = result.status == UpdateStatus.available;
+    });
+
+    final info = result.info;
+    if (result.status == UpdateStatus.available && info != null) {
+      // 用户主动检查时照常弹窗（即使启动时的静默检查已经提示过）。
+      await UpdateService.markNotified(info.latestLabel);
+      await UpdateService.markChecked();
+      if (!mounted) return;
+      await showUpdateDialog(context, info);
+      return;
+    }
+    if (!mounted) return;
+    final message = result.status == UpdateStatus.failed
+        ? (result.error ?? '检查更新失败')
+        : '当前已是最新版本';
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,9 +148,42 @@ class ProfileScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const _SectionHeader('关于'),
-                const ListTile(
-                  title: Text('当前版本'),
-                  trailing: Text('1.0.0'),
+                ListTile(
+                  title: const Text('当前版本'),
+                  trailing:
+                      Text(_versionLabel.isEmpty ? '读取中…' : _versionLabel),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text('检查更新'),
+                  trailing: _checking
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_hasUpdate)
+                              Text(
+                                '有新版本',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.3),
+                            ),
+                          ],
+                        ),
+                  onTap: _checking ? null : _checkUpdate,
                 ),
                 const Divider(height: 1),
                 ListTile(

@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'screens/connections_screen.dart';
 import 'screens/profile_screen.dart';
 import 'services/connection_store.dart';
+import 'services/update_service.dart';
 import 'settings/app_settings.dart';
+import 'widgets/update_dialog.dart';
 
 /// iOS 系统蓝，对齐 SwiftUI 默认 `.accentColor`（Swift 版 SQLink 的强调色来源）。
 const _iosBlue = Color(0xFF007AFF);
@@ -75,6 +77,30 @@ class RootTabs extends StatefulWidget {
 
 class _RootTabsState extends State<RootTabs> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动后静默检查更新：放在首帧之后，不阻塞启动。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckUpdate());
+  }
+
+  /// 启动时的静默更新检查。
+  /// 每天最多查一次；只在确实有新版本、且该版本还没提示过时才弹窗，
+  /// 失败（没网 / GitHub 不通）完全不打扰用户，并且不记「已检查」日期，
+  /// 这样下次启动会再试一次。
+  Future<void> _autoCheckUpdate() async {
+    if (!await UpdateService.shouldAutoCheck()) return;
+    final result = await UpdateService.check();
+    if (result.status == UpdateStatus.failed) return;
+    await UpdateService.markChecked();
+    final info = result.info;
+    if (result.status != UpdateStatus.available || info == null) return;
+    if (await UpdateService.alreadyNotified(info.latestLabel)) return;
+    await UpdateService.markNotified(info.latestLabel);
+    if (!mounted) return;
+    await showUpdateDialog(context, info);
+  }
 
   @override
   Widget build(BuildContext context) {

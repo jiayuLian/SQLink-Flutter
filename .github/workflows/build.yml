@@ -74,7 +74,12 @@ jobs:
             sed -i -E 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
           fi
       - name: Build release APK (仅 arm64-v8a，市面上最主流架构)
-        run: flutter build apk --release --target-platform=android-arm64 --tree-shake-icons
+        # 构建号取自 pubspec.yaml 的 version（+N 部分），不自动 +1：
+        # 平时改 bug / 加功能但未测完，版本号保持不动；待用户确认「发版」
+        # 后我再手动把 pubspec 的版本号 +1 并推送，App 端「检查更新」才提示。
+        run: |
+          flutter build apk --release --target-platform=android-arm64 \
+            --tree-shake-icons
       - uses: actions/upload-artifact@v4
         with:
           name: apk
@@ -112,7 +117,9 @@ jobs:
       - name: Install CocoaPods
         run: sudo gem install cocoapods
       - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+        # 构建号同样取自 pubspec.yaml，与 APK 保持一致，App 内比对才能对上。
+        run: |
+          flutter build ios --release --no-codesign
       - name: Package unsigned IPA (TrollStore)
         run: |
           cd build/ios/iphoneos
@@ -142,6 +149,21 @@ jobs:
         run: |
           mv apk/app-release.apk apk/SQLink-Flutter.apk
           ls -la apk ipa
+      - name: Generate release body with version marker
+        # 正文 = 隐藏版本标记（App 端「检查更新」靠它比对，用户看不到）
+        #      + 可见的「当前版本」行 + RELEASE_NOTES.md 原文。
+        # 版本号整体取自 pubspec.yaml（含 +N 构建号），与 APK/IPA 内完全一致；
+        # 因此版本号只在用户确认「发版」后由我手动 +1，平时保持不变。
+        run: |
+          VER=$(grep -E '^version:' pubspec.yaml | head -n1 | sed -E 's/^version:[[:space:]]*//')
+          {
+            echo "<!-- app-version: ${VER} -->"
+            echo "> 当前版本：**${VER}**"
+            echo
+            cat RELEASE_NOTES.md
+          } > RELEASE_BODY.md
+          echo "--- RELEASE_BODY.md 前 4 行 ---"
+          head -n 4 RELEASE_BODY.md
       - name: Remove previous latest release & tag (rolling build)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -162,9 +184,10 @@ jobs:
         with:
           tag_name: latest
           name: SQLink latest
-          # 发行版正文 = 仓库根目录 RELEASE_NOTES.md（基础功能介绍 + 底部更新记录）。
-          # 该文件为 .md，改动它不会触发构建；正文随下次代码构建一并刷新。
-          body_path: RELEASE_NOTES.md
+          # 发行版正文 = 上一步生成的 RELEASE_BODY.md
+          #（隐藏版本标记 + 可见版本行 + 本文件正文）。
+          # 注意：.md 改动不触发构建，所以正文随下次代码构建一并刷新。
+          body_path: RELEASE_BODY.md
           files: |
             apk/SQLink-Flutter.apk
             ipa/SQLink-Flutter.ipa

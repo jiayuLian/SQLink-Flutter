@@ -15,6 +15,9 @@ dependencies:
   provider: ^6.1.0
   share_plus: ^10.0.0
   flutter_slidable: ^3.1.1
+  # 「检查更新」用：读本机安装的版本号 / 构建号，以及打开下载页
+  package_info_plus: ^10.0.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
