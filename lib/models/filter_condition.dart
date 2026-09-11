@@ -1,5 +1,14 @@
 /// 筛选条件模型（对齐 Swift 的 FilterCondition / FilterOperator / FilterLogic）。
+int _filterConditionSeq = 0;
+String _nextFilterConditionId() => 'fc-${++_filterConditionSeq}';
+
 class FilterCondition {
+  /// 稳定唯一标识（对齐 Swift `FilterCondition.id: UUID`）。
+  /// 用途：筛选弹窗为每个条件绑定一个 TextEditingController 与一个 Widget key。
+  /// 之前拿 `Object.hashCode` 当键，默认实现是身份哈希，理论上会碰撞——
+  /// 一旦两行撞上，两行就会共用一个输入控制器（甲行打字乙行跟着变）。
+  final String id;
+
   String field;
   FilterOp op;
   String value;
@@ -7,12 +16,13 @@ class FilterCondition {
   FilterLogic logic; // 仅对非首条条件生效
 
   FilterCondition({
+    String? id,
     this.field = '',
     this.op = FilterOp.contains,
     this.value = '',
     this.enabled = true,
     this.logic = FilterLogic.and,
-  });
+  }) : id = id ?? _nextFilterConditionId();
 }
 
 /// 表「筛选 & 排序」状态。结构页与数据页共享同一实例，改动互通（对齐 Swift

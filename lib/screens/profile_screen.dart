@@ -68,8 +68,14 @@ class ProfileScreen extends StatelessWidget {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
+                    // 输入即生效（原来只在按回车 onSubmit 时保存，输完直接点别处
+                    // 会静默丢失），空串 / 非数字 / 非正数一律忽略。
+                    onChanged: (v) {
+                      final n = int.tryParse(v.trim());
+                      if (n != null && n > 0) settings.setPageSize(n);
+                    },
                     onFieldSubmitted: (v) {
-                      final n = int.tryParse(v);
+                      final n = int.tryParse(v.trim());
                       if (n != null && n > 0) settings.setPageSize(n);
                     },
                   ),

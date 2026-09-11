@@ -45,6 +45,7 @@ class _FilterBuilderState extends State<FilterBuilder> {
     // 深拷贝草稿，避免直接改动外部传入的条件列表（未点「应用」不生效，对齐 Swift draft*）。
     _drafts = widget.initialConditions
         .map((c) => FilterCondition(
+              id: c.id,
               field: c.field,
               op: c.op,
               value: c.value,
@@ -74,7 +75,8 @@ class _FilterBuilderState extends State<FilterBuilder> {
 
   List<String> get _fieldNames => widget.columns.map((c) => c.field).toList();
 
-  String _keyFor(FilterCondition c) => '${c.hashCode}';
+  /// 控制器键 = 条件的稳定 id（不再用 hashCode，避免理论上的碰撞导致两行共用控制器）。
+  String _keyFor(FilterCondition c) => c.id;
 
   void _add() {
     final f = _fieldNames.isNotEmpty ? _fieldNames.first : '';
@@ -182,6 +184,9 @@ class _FilterBuilderState extends State<FilterBuilder> {
     final c = _drafts[i];
     final showLogic = i > 0;
     return Card(
+      // 按 id 定位（对齐 Swift `ForEach($draftConditions)` 用 UUID 标识元素）：
+      // 删除中间某条时，其余行的输入框（焦点/光标/控制器）不会错位。
+      key: ValueKey(c.id),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -233,7 +238,11 @@ class _FilterBuilderState extends State<FilterBuilder> {
               TextField(
                 controller: _controllers[_keyFor(c)],
                 decoration: const InputDecoration(
-                  labelText: '值',
+                  // 用 hintText（占位）而不是 labelText：对齐 Swift
+                  // `TextField("值", text:)` 的语义——输入内容后提示「值」随即消失。
+                  // 若用 labelText，标签会一直浮在输入内容上方（isCollapsed 下甚至与
+                  // 内容重叠），看起来像「值」没被清掉。
+                  hintText: '值',
                   isCollapsed: true,
                   contentPadding: EdgeInsets.symmetric(vertical: 10),
                 ),

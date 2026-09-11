@@ -290,6 +290,10 @@ class _TableDataScreenState extends State<TableDataScreen> {
         .map((r) => _data!.columns.map((c) => r[c]).toList())
         .toList();
     // 为每个可编辑单元格建立控制器，初值取自当前行数据。
+    // 防御：先释放上一轮可能残留的控制器（与查询控制台一致），避免 TextEditingController 泄漏。
+    for (final c in _editControllers.values) {
+      c.dispose();
+    }
     _editControllers.clear();
     for (var ri = 0; ri < _editing.length; ri++) {
       for (var ci = 0; ci < _data!.columns.length; ci++) {
