@@ -122,6 +122,12 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(isNew ? '新建连接' : '编辑连接'),
+        // 对齐 Swift ConnectionEditorView：导航栏左侧「取消」（直接返回，不保存）。
+        leadingWidth: 72,
+        leading: TextButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text('取消'),
+        ),
         actions: [
           TextButton(
             onPressed: _testing ? null : _test,
@@ -165,10 +171,15 @@ class _ConnectionEditScreenState extends State<ConnectionEditScreen> {
                       decoration: const InputDecoration(labelText: '端口'),
                       keyboardType: TextInputType.number,
                       validator: (v) {
-                        final n = int.tryParse(v ?? '');
-                        return (n == null || n <= 0) ? '端口无效' : null;
+                        final n = int.tryParse((v ?? '').trim());
+                        // 对齐可连接范围（Swift 只校验能转成 Int，这里补上上界，
+                        // 避免保存一个 MySQL 无法使用的端口）。
+                        if (n == null || n <= 0 || n > 65535) {
+                          return '端口无效（1-65535）';
+                        }
+                        return null;
                       },
-                      onSaved: (v) => _p.port = int.parse(v!),
+                      onSaved: (v) => _p.port = int.parse(v!.trim()),
                     ),
                     TextFormField(
                       initialValue: _p.user,

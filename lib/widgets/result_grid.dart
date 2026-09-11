@@ -166,7 +166,9 @@ class _ResultGridState extends State<ResultGrid> {
       ],
     );
 
-    if (widget.rows.isEmpty) {
+    // 对齐 Swift ResultGridView：以 columns.isEmpty 判空。
+    // 用 rows.isEmpty 会把「有列但 0 行」的空表误判成「无结果集」，看不到列头。
+    if (widget.columns.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Text('无结果集', style: TextStyle(color: Colors.grey)),

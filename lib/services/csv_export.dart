@@ -39,3 +39,10 @@ String toSql(
   return lines.join('\n');
 }
 
+/// 导出文件名用的时间戳（对齐 Swift ExportUtils.timestamp 的 `yyyyMMdd_HHmmss`）。
+String exportTimestamp() {
+  final n = DateTime.now();
+  String p(int v) => v.toString().padLeft(2, '0');
+  return '${n.year}${p(n.month)}${p(n.day)}_${p(n.hour)}${p(n.minute)}${p(n.second)}';
+}
+

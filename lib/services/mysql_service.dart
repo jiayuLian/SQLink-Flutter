@@ -250,6 +250,45 @@ class MySQLService {
     return r.isNotEmpty ? r.first : ResultSetData.ok(0);
   }
 
+  /// 分块拉取**全部匹配行**（带 WHERE / ORDER），用于导出全量而非当前页。
+  /// 对齐 Swift 的 `exportTableStreaming` / `fetchAllRows`：边拉边追加，
+  /// 每块 chunk 行；块内行数不足 chunk 即认为取完，不会死循环。
+  Future<ResultSetData> fetchAllRows(
+    String db,
+    String table, {
+    String? where,
+    String? order,
+    int chunk = 500,
+  }) async {
+    int total = 0;
+    try {
+      total = await countTable(db, table, where: where);
+    } catch (_) {
+      // 计数失败不阻断导出：以「块未取满」为终止条件。
+    }
+    final all = <Map<String, String?>>[];
+    var columns = const <String>[];
+    var offset = 0;
+    // 至少拉一次，保证空表也能拿到列名（导出表头）。
+    while (true) {
+      final r = await fetchTable(
+        db,
+        table,
+        limit: chunk,
+        offset: offset,
+        where: where,
+        order: order,
+      );
+      if (!r.isResultSet) break;
+      if (columns.isEmpty) columns = r.columns;
+      all.addAll(r.rows);
+      offset += r.rows.length;
+      if (r.rows.length < chunk) break;
+      if (total > 0 && offset >= total) break;
+    }
+    return ResultSetData.result(columns, all);
+  }
+
   Future<int> countTable(String db, String table, {String? where}) async {
     var sql = 'SELECT COUNT(*) FROM `${_esc(db)}`.`${_esc(table)}`';
     if (where != null && where.trim().isNotEmpty) sql += ' WHERE $where';

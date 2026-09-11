@@ -53,6 +53,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
   String? _editError;
   bool _saving = false;
 
+  /// 导出进行中：导出会分块拉取**全部匹配行**，需要给用户反馈并防止重入。
+  bool _exporting = false;
+
   // 编辑态单元格输入框控制器，按 "$ri-$ci" 持有，避免每次按键 setState 重建
   // DataTable 导致 TextFormField(initialValue) 光标跳到末尾（同筛选器焦点问题）。
   final Map<String, TextEditingController> _editControllers = {};
@@ -208,28 +211,51 @@ class _TableDataScreenState extends State<TableDataScreen> {
     );
   }
 
-  void _exportCsv() {
-    if (_data == null || !_data!.isResultSet) return;
-    final csv = toCsv(_data!.columns, _data!.rows);
-    Share.shareXFiles(
-      [
-        XFile.fromData(utf8.encode(csv),
-            name: '${widget.table}.csv', mimeType: 'text/csv')
-      ],
-      subject: '${widget.db}.${widget.table}',
-    );
-  }
-
-  void _exportSql() {
-    if (_data == null || !_data!.isResultSet) return;
-    final sql = toSql(widget.table, _data!.columns, _data!.rows);
-    Share.shareXFiles(
-      [
-        XFile.fromData(utf8.encode(sql),
-            name: '${widget.table}.sql', mimeType: 'text/sql')
-      ],
-      subject: '${widget.db}.${widget.table}',
-    );
+  /// 导出**全部匹配行**（对齐 Swift 的 exportTableStreaming）：
+  /// 按当前 WHERE / ORDER 分块拉取整表匹配数据后生成文件，
+  /// 而不是只导出当前这一页（旧实现只导当前页，数据会缺）。
+  Future<void> _export(String format) async {
+    if (_exporting || _data == null || !_data!.isResultSet) return;
+    setState(() => _exporting = true);
+    try {
+      final all = await widget.service.fetchAllRows(
+        widget.db,
+        widget.table,
+        where: widget.filter.where,
+        order: widget.filter.order,
+      );
+      // 空表时 fetchAllRows 至少拉一次，列名仍可用；兜底用当前页列名。
+      final cols = all.columns.isNotEmpty ? all.columns : _data!.columns;
+      final rows = all.rows;
+      // 文件名带时间戳（对齐 Swift：`<table>_yyyyMMdd_HHmmss.csv`）。
+      final name = '${widget.table}_${exportTimestamp()}';
+      if (format == 'sql') {
+        final sql = toSql(widget.table, cols, rows);
+        await Share.shareXFiles(
+          [
+            XFile.fromData(utf8.encode(sql),
+                name: '$name.sql', mimeType: 'text/sql')
+          ],
+          subject: '${widget.db}.${widget.table}',
+        );
+      } else {
+        final csv = toCsv(cols, rows);
+        await Share.shareXFiles(
+          [
+            XFile.fromData(utf8.encode(csv),
+                name: '$name.csv', mimeType: 'text/csv')
+          ],
+          subject: '${widget.db}.${widget.table}',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   // ---- 结构化筛选 & 排序（居中卡片弹窗，对齐 Swift filterOverlay） ----
@@ -405,16 +431,29 @@ class _TableDataScreenState extends State<TableDataScreen> {
                 tooltip: '编辑',
                 onPressed: (_data?.isResultSet ?? false) ? _enterEdit : null,
               ),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.ios_share),
-              tooltip: '导出',
-              enabled: _data?.isResultSet ?? false,
-              onSelected: (v) => v == 'sql' ? _exportSql() : _exportCsv(),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'csv', child: Text('导出 CSV')),
-                PopupMenuItem(value: 'sql', child: Text('导出 SQL')),
-              ],
-            ),
+            // 导出中显示转圈（导出会分块拉全量，可能耗时）。
+            if (_exporting)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.ios_share),
+                tooltip: '导出',
+                enabled: _data?.isResultSet ?? false,
+                onSelected: (v) => _export(v),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'csv', child: Text('导出 CSV')),
+                  PopupMenuItem(value: 'sql', child: Text('导出 SQL')),
+                ],
+              ),
           ],
         ],
       ),
@@ -562,10 +601,8 @@ class _TableDataScreenState extends State<TableDataScreen> {
   Widget _buildEditableGrid() {
     final cols = _data!.columns;
     final pkIndex = _pkIndex;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkBg = isDark
-        ? Colors.amber.shade900.withValues(alpha: 0.35)
-        : Colors.amber.shade100;
+    // 对齐 Swift：主键列底色为主题色 10%，表头标 🔑🔒（🔒 表示只读锁定）。
+    final pkBg = Theme.of(context).colorScheme.primary.withValues(alpha: 0.10);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
@@ -573,7 +610,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
           columns: [
             for (var ci = 0; ci < cols.length; ci++)
               DataColumn(
-                label: Text((ci == pkIndex ? '🔑 ' : '') + cols[ci]),
+                label: Text((ci == pkIndex ? '🔑🔒 ' : '') + cols[ci]),
               ),
           ],
           rows: List.generate(_editing.length, (ri) {

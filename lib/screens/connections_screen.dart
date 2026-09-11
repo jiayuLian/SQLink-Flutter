@@ -29,8 +29,12 @@ class ConnectionsScreen extends StatelessWidget {
       body: Consumer<ConnectionStore>(
         builder: (context, store, _) {
           if (store.connections.isEmpty) {
+            // 对齐 Swift ConnectionsView 空态：次要文字色。
             return const Center(
-              child: Text('还没有连接，点右上角 + 添加一个'),
+              child: Text(
+                '还没有连接，点右上角 + 添加一个',
+                style: TextStyle(color: Colors.grey),
+              ),
             );
           }
           return ListView.separated(
@@ -98,8 +102,9 @@ class _ConnectionCard extends StatelessWidget {
           leading: Icon(Icons.dns, color: Theme.of(context).colorScheme.primary),
           title: Text(profile.name.isEmpty ? profile.host : profile.name),
           subtitle: Text(
+            // 对齐 Swift ConnectionRow：`user@host:port` + 有库时紧接 `/db`（不带空格）。
             '${profile.user}@${profile.host}:${profile.port}'
-            '${profile.database.isNotEmpty ? ' / ${profile.database}' : ''}',
+            '${profile.database.isNotEmpty ? '/${profile.database}' : ''}',
           ),
           // 对齐 Swift ConnectionRow：TLS 锁图标 + 行内铅笔按钮。
           trailing: Row(

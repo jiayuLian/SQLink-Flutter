@@ -97,6 +97,8 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
           style: TextStyle(color: color),
           overflow: TextOverflow.ellipsis,
         ),
+        // 对齐 Swift 的 NavigationLink：右侧显示下级箭头。
+        trailing: Icon(Icons.chevron_right, color: color),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => QueryConsoleScreen(service: widget.service, db: db),

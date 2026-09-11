@@ -54,7 +54,8 @@ class AppSettings extends ChangeNotifier {
     final list = List<String>.from(history);
     list.remove(s);
     list.insert(0, s);
-    if (list.length > 50) list.removeRange(50, list.length);
+    // 上限 30 条（对齐 Swift QueryHistory.add 的 prefix(30)）。
+    if (list.length > 30) list.removeRange(30, list.length);
     history = list;
     notifyListeners();
     final p = await SharedPreferences.getInstance();

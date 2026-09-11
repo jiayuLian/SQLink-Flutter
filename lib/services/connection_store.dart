@@ -12,14 +12,26 @@ class ConnectionStore extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('connections') ?? '[]';
+    final out = <ConnectionProfile>[];
     try {
-      final list = (jsonDecode(raw) as List)
-          .map((e) => ConnectionProfile.fromJson(e as Map<String, dynamic>))
-          .toList();
-      _connections = list;
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final e in decoded) {
+          // 逐条容错：单条记录损坏（如缺 id/字段类型不符）只跳过该条，
+          // 不再让一条坏数据把整个连接列表清空。
+          try {
+            if (e is Map<String, dynamic>) {
+              out.add(ConnectionProfile.fromJson(e));
+            }
+          } catch (_) {
+            continue;
+          }
+        }
+      }
     } catch (_) {
-      _connections = [];
+      // 整段 JSON 损坏时保持空列表。
     }
+    _connections = out;
     notifyListeners();
   }
 

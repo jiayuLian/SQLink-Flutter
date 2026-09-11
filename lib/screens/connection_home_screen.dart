@@ -21,6 +21,10 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
   bool _connecting = true;
   String? _error;
 
+  /// 页面已销毁标记：建连是异步的，若用户在连接过程中返回，
+  /// 完成后的连接会挂在已废弃的 service 上永不关闭（socket 泄漏）。
+  bool _disposed = false;
+
   @override
   void initState() {
     super.initState();
@@ -31,14 +35,20 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
   Future<void> _connect() async {
     try {
       await _service.connect(widget.password);
+      if (_disposed) {
+        _service.close();
+        return;
+      }
       if (mounted) setState(() => _connecting = false);
     } catch (e) {
+      if (_disposed) return;
       if (mounted) setState(() => _error = e.toString());
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _service.close();
     super.dispose();
   }

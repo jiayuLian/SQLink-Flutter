@@ -577,6 +577,19 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       }
       if (mounted) {
         setState(() {
+          // 关键：只读结果表格取自 _outcomes，必须一起替换，
+          // 否则「保存成功」后表格仍显示旧值（对齐 Swift 的 rows = editingRows）。
+          final olds = _outcomes;
+          if (olds != null) {
+            var replaced = false;
+            _outcomes = olds.map((o) {
+              if (!replaced && o.isResultSet) {
+                replaced = true;
+                return ResultSetData.result(_editColNames, newRows);
+              }
+              return o;
+            }).toList();
+          }
           _editRowsOriginal = newRows;
           _editMode = false;
           _editingRows = [];
@@ -633,8 +646,12 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     if (rs == null || rs.isEmpty) return;
     final first = rs.last;
     final csv = toCsv(first.columns, first.rows);
+    // 文件名带时间戳（对齐 Swift：query_result_yyyyMMdd_HHmmss.csv）。
     Share.shareXFiles(
-      [XFile.fromData(utf8.encode(csv), name: 'sqlink_result.csv', mimeType: 'text/csv')],
+      [
+        XFile.fromData(utf8.encode(csv),
+            name: 'query_result_${exportTimestamp()}.csv', mimeType: 'text/csv')
+      ],
       subject: 'SQLink 查询结果',
     );
   }
@@ -645,7 +662,10 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     final first = rs.last;
     final sql = toSql('query_result', first.columns, first.rows);
     Share.shareXFiles(
-      [XFile.fromData(utf8.encode(sql), name: 'sqlink_result.sql', mimeType: 'text/sql')],
+      [
+        XFile.fromData(utf8.encode(sql),
+            name: 'query_result_${exportTimestamp()}.sql', mimeType: 'text/sql')
+      ],
       subject: 'SQLink 查询结果',
     );
   }
@@ -714,7 +734,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           IconButton(
             onPressed: _showHistory,
             icon: const Icon(Icons.history),
-            tooltip: 'SQL 历史',
+            tooltip: '查询历史',
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.ios_share),
@@ -965,8 +985,8 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   /// 编辑态可编辑表格（对齐 Swift EditableGridView，主键列只读锁定）。
   Widget _buildEditableGrid() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pkBg = isDark ? Colors.amber.shade900.withValues(alpha: 0.35) : Colors.amber.shade100;
+    // 对齐 Swift：主键列底色为主题色 10%，表头标 🔑🔒（🔒 表示只读锁定）。
+    final pkBg = Theme.of(context).colorScheme.primary.withValues(alpha: 0.10);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
@@ -974,7 +994,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           columns: [
             for (var ci = 0; ci < _editColNames.length; ci++)
               DataColumn(
-                label: Text((ci == _editPKIndex ? '🔑 ' : '') + _editColNames[ci]),
+                label: Text((ci == _editPKIndex ? '🔑🔒 ' : '') + _editColNames[ci]),
               ),
           ],
           rows: List.generate(_editingRows.length, (ri) {
@@ -1037,7 +1057,8 @@ class _HistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SQL 历史'),
+        // 对齐 Swift QueryHistorySheet 的标题「查询历史」。
+        title: const Text('查询历史'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
