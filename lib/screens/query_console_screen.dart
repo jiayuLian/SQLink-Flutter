@@ -169,19 +169,26 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
     }
   }
 
+  /// 是否按「表」记忆 SQL：仅当从某张表内打开控制台（有 defaultTable）时启用。
+  /// 从表列表页右上角打开（无默认表）时不记忆/不恢复，控制台始终空白，由用户自行输入。
+  bool get _rememberSqlByTable =>
+      widget.defaultTable != null && widget.defaultTable!.isNotEmpty;
+
   Future<void> _loadSavedSql() async {
+    if (!_rememberSqlByTable) return;
     final settings = Provider.of<AppSettings>(context, listen: false);
     if (!settings.autoSaveSQL) return;
-    final saved = await settings.getSavedSQL(widget.db ?? '_', widget.defaultTable ?? '_');
+    final saved = await settings.getSavedSQL(widget.db ?? '_', widget.defaultTable!);
     if (saved != null && saved.isNotEmpty && mounted) {
       _sql.text = saved;
     }
   }
 
   Future<void> _saveSqlIfNeeded() async {
+    if (!_rememberSqlByTable) return;
     final settings = Provider.of<AppSettings>(context, listen: false);
     if (settings.autoSaveSQL) {
-      await settings.saveSQL(widget.db ?? '_', widget.defaultTable ?? '_', _sql.text);
+      await settings.saveSQL(widget.db ?? '_', widget.defaultTable!, _sql.text);
     }
   }
 

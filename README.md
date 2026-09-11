@@ -64,6 +64,8 @@ zip -r SQLink-Flutter.ipa Payload
 - Android：`SQLink-Flutter.apk`
 - iOS：`SQLink-Flutter.ipa`（构建时为**未签名**状态，安装时由 TrollStore 完成签名）
 
+> `latest` 发行版正文（基础功能介绍 + 更新记录）取自仓库根目录 `RELEASE_NOTES.md`。该文件为纯文档，修改它不会触发构建，正文会在下次代码构建时统一刷新。
+
 > **关于 iOS 签名**：iOS 不允许运行完全无签名的 App。本流程 CI 产出的是「未签名」IPA，安装时由 **TrollStore 借助设备上的 CoreTrust 漏洞在本地完成签名**，永久有效、**不依赖 Apple ID / 开发者账号 / Mac**。这与传统「自签」（AltStore / Sideloadly 用免费 Apple ID 签名、7 天过期需重签）不同。
 
 ## 安装
