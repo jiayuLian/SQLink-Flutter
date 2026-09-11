@@ -48,6 +48,11 @@ jobs:
           if ! grep -q 'android.permission.ACCESS_NETWORK_STATE' android/app/src/main/AndroidManifest.xml; then
             sed -i 's|</manifest>|<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n</manifest>|' android/app/src/main/AndroidManifest.xml
           fi
+          # 让 .so 参与 zip 压缩（与 useLegacyPackaging 配合）：安装时解压到 data 目录，
+          # 下载体积从 ~18MB 降到 ~11-12MB；代价是首启慢百毫秒级（个人侧载可忽略）。
+          if ! grep -q 'android:extractNativeLibs' android/app/src/main/AndroidManifest.xml; then
+            sed -i -E 's/<application /<application android:extractNativeLibs="true" /' android/app/src/main/AndroidManifest.xml
+          fi
       - name: Set Android applicationId to com.jiayu.sqlinkFlutter
         run: |
           if [ -f android/app/build.gradle.kts ]; then
@@ -73,6 +78,32 @@ jobs:
           elif [ -f android/app/build.gradle ]; then
             sed -i -E 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle
           fi
+      - name: Enable .so zip compression (reduce APK download size)
+        # 默认 .so 以未压缩方式存进 APK（便于 mmap），导致下载体积 ~18MB。
+        # 开 useLegacyPackaging=true 让 libflutter.so / libapp.so 参与 zip 压缩（预计 ~11-12MB）。
+        # 配合 manifest 的 extractNativeLibs=true，安装时解压到 data 目录，首启慢百毫秒级（个人侧载可忽略）。
+        # 用 Python 稳健注入到 android 块首行之后，避免 sed 找错闭合花括号；块内容在 Python 内构造（\n 由 Python 解释）。
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            PF=android/app/build.gradle.kts
+          else
+            PF=android/app/build.gradle
+          fi
+          python3 - "$PF" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          if 'useLegacyPackaging' in s:
+              print('useLegacyPackaging already present, skip')
+          else:
+              if p.endswith('.kts'):
+                  blk = "    packaging {\n        jniLibs {\n            useLegacyPackaging = true\n        }\n    }\n"
+              else:
+                  blk = "    packagingOptions {\n        jniLibs {\n            useLegacyPackaging = true\n        }\n    }\n"
+              s = s.replace('android {', 'android {\n' + blk, 1)
+              open(p, 'w', encoding='utf-8').write(s)
+              print('injected useLegacyPackaging into', p)
+          PY
       - name: Build release APK (仅 arm64-v8a，市面上最主流架构)
         # 构建号取自 pubspec.yaml 的 version（+N 部分），不自动 +1：
         # 平时改 bug / 加功能但未测完，版本号保持不动；待用户确认「发版」
