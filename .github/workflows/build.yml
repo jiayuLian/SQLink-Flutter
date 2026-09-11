@@ -160,8 +160,8 @@ jobs:
         with:
           tag_name: latest
           name: SQLink latest
-          # latest 作为固定入口承载「基础功能介绍」，正文保持稳定；
-          # 每次改动的具体说明见对应的版本号发行版。
+          # latest 作为固定入口承载「基础功能介绍」+ 底部「更新记录」；
+          # 每次代码改动会更新这里的更新记录并重建 latest（滚动覆盖上一版）。
           body: |
             # SQLink（Flutter 版）基础功能
 
@@ -183,7 +183,25 @@ jobs:
             - **Android**：下载 `SQLink-Flutter.apk`，允许「未知来源」后安装
             - **iOS**：用 **TrollStore** 打开 `SQLink-Flutter.ipa` 安装（未签名 IPA，安装时自动签名，无需 Apple ID）
 
-            > 本页为基础功能介绍。更新记录（新增功能 / 修复 bug / 日期）见仓库 README 的「更新记录」章节。
+            ## 更新记录
+
+            > 仅记录真正的代码改动（新增功能 / 修复 bug）。文档与构建流程调整不在此列。
+
+            - **2026-09-11**
+              - ✨ 新增：查询控制台 SQL 自动补全增强
+                - 输入框开头打字（如 `SEL`）即提示，不再空白
+                - 关键词支持多词短语：输入 `OR` 提示 `ORDER BY`，`SEL` 提示 `SELECT` / `SELECT *`
+                - 表名前缀 / 模糊匹配库中表（如 `lvv_c` 匹配 `lvv_user_config`、`lvv_exchange_record`）
+                - 表名出现在 SQL 中即加载其字段，便于表名后直接补全字段
+              - ✨ 新增：表别名 / 表名前缀字段补全（`alias.` / `table.` / `db.table.`）
+                - 解析 `FROM t a`、`JOIN t b`、`FROM t1 a, t2 b` 等别名写法
+                - 输入 `a.` / `b.` 即补全各自表的字段，服务于关联查询
+              - 🐞 修复：点击补全时误删别名前缀（`a.` 被删成 `id`，应为 `a.id`）
+
+            - **2026-09-09**
+              - ✨ 新增：数据库列表 / 表列表顶部实时搜索（对齐 Swift 版 `.searchable`）
+              - 🐞 修复：新建 / 编辑连接中密码「眼睛」图标方向反了（睁眼时显示明文、闭眼时显示密文）
+              - 📄 文档：README 更新为技术说明（包名、产物名、错误分类、NAT64 兼容、权限、滑动样式等）
           files: |
             apk/SQLink-Flutter.apk
             ipa/SQLink-Flutter.ipa
