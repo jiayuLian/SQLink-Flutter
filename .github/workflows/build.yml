@@ -140,7 +140,18 @@ jobs:
         run: |
           mv apk/app-release.apk apk/SQLink-Flutter.apk
           ls -la apk ipa
-      - name: Remove previous latest release & tag (keep only one version)
+      - name: Create versioned release (history, notes auto-generated from commits)
+        uses: softprops/action-gh-release@v2
+        with:
+          # 只有真正的代码改动才会触发构建（README 已被 paths-ignore 排除），
+          # 因此这里为每次代码改动额外发布一个带版本号的历史发行版并保留。
+          tag_name: v${{ github.run_number }}
+          name: SQLink v${{ github.run_number }}
+          generate_release_notes: true
+          files: |
+            apk/SQLink-Flutter.apk
+            ipa/SQLink-Flutter.ipa
+      - name: Remove previous latest release & tag (rolling build)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -155,11 +166,35 @@ jobs:
           fi
           curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$TAG" || true
-      - name: Create GitHub Release (single latest version)
+      - name: Create GitHub Release (latest = 基础功能介绍)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: SQLink latest
+          # latest 作为固定入口承载「基础功能介绍」，正文保持稳定；
+          # 每次改动的具体说明见对应的版本号发行版。
+          body: |
+            # SQLink（Flutter 版）基础功能
+
+            手机上的 MySQL 客户端，用 Flutter 重写，Android / iOS 双端通用，全功能免费、无会员体系。
+
+            ## 基础功能
+            - **多连接管理**：保存多个数据库连接（主机 / 端口 / 用户 / 默认库 / 密码 / TLS / 自签信任）
+            - **密码安全存储**：iOS Keychain、Android 加密存储，明文不落盘
+            - **库表浏览**：数据库 → 表 / 视图 → 列；列表顶部支持实时搜索表名
+            - **表数据浏览**：分页、排序、WHERE 筛选、行数统计、CSV 导出
+            - **表数据内联编辑**：设置筛选或排序后可就地改单元格，避免误改全表
+            - **查询控制台**：任意 SQL、多语句、SQL 历史、关键字 / 表名 / 字段名自动补全、CSV 导出
+            - **连接错误分类提示**：账号错 / 密码错 / 网络不可达分别给出中文提示
+            - **TLS 加密连接**：支持自签名证书信任
+            - **认证兼容**：mysql_native_password 与 caching_sha2_password（MySQL 8 默认）
+            - **iOS 风格交互**：连接列表左滑删除为窄条 + 确认弹窗
+
+            ## 安装
+            - **Android**：下载 `SQLink-Flutter.apk`，允许「未知来源」后安装
+            - **iOS**：用 **TrollStore** 打开 `SQLink-Flutter.ipa` 安装（未签名 IPA，安装时自动签名，无需 Apple ID）
+
+            > 本页为基础功能介绍。每次改动的具体内容见各「v<版本号>」发行版。
           files: |
             apk/SQLink-Flutter.apk
             ipa/SQLink-Flutter.ipa

@@ -8,12 +8,14 @@ import '../services/csv_export.dart';
 import '../settings/app_settings.dart';
 import '../widgets/result_grid.dart';
 
+// 关键词含多词短语（如 ORDER BY），便于输入 OR 即提示 ORDER BY。
 const _keywords = [
-  'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET',
-  'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'DATABASE', 'LIMIT', 'ORDER',
-  'GROUP', 'BY', 'AND', 'OR', 'NOT', 'NULL', 'LIKE', 'IN', 'BETWEEN', 'JOIN',
-  'LEFT', 'RIGHT', 'INNER', 'ON', 'AS', 'ASC', 'DESC', 'HAVING', 'UNION',
-  'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
+  'SELECT', 'SELECT *', 'FROM', 'WHERE', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET',
+  'DELETE FROM', 'CREATE TABLE', 'DROP TABLE', 'ALTER TABLE', 'DATABASE', 'TABLE',
+  'LIMIT', 'ORDER BY', 'GROUP BY', 'HAVING', 'UNION', 'UNION ALL', 'DISTINCT',
+  'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AS', 'AND', 'OR', 'NOT',
+  'NULL', 'IS NULL', 'IS NOT NULL', 'LIKE', 'IN', 'BETWEEN', 'ASC', 'DESC',
+  'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
 ];
 
 class QueryConsoleScreen extends StatefulWidget {
@@ -98,6 +100,17 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   Future<void> _loadColumnsForSqlTables() async {
     final tables = _extractSqlTables();
+    // 额外识别文本中直接出现的表名（如刚通过补全插入、尚未写 FROM 的场景），
+    // 以便接着补全该表的字段。
+    for (final m in RegExp(r'[A-Za-z0-9_$]+').allMatches(_sql.text)) {
+      final word = m.group(0)!.toLowerCase();
+      for (final t in _tables) {
+        if (t.toLowerCase() == word && !tables.containsKey(t)) {
+          tables[t] = null;
+          break;
+        }
+      }
+    }
     if (tables.isEmpty) return;
     for (final entry in tables.entries) {
       final table = entry.key;
@@ -187,30 +200,66 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
 
   /// 取出光标前正在输入的“当前词”。以空格/换行/逗号/括号/反引号/等号/点为界，
   /// 并去掉首尾反引号，方便对 `table`.`field` 这种场景也能提示。
+  /// 分隔符用 *（可零个）——否则在输入框最开头打字（如 SEL）时匹配不到，
+  /// 补全会始终为空。
   String get _currentWord {
     final t = _sql.text.substring(0, _sql.selection.baseOffset.clamp(0, _sql.text.length));
-    final match = RegExp(r'[\s,()`.=]+([^\s,()`.=]*)$').firstMatch(t);
+    final match = RegExp(r'[\s,()`.=]*([^\s,()`.=]*)$').firstMatch(t);
     return (match?.group(1) ?? '').replaceAll('`', '');
   }
 
+  /// 子序列模糊匹配：query 的字符按顺序出现在 s 中即算匹配
+  /// （如 lvv_c → lvv_exchange_record）。
+  bool _isSubsequence(String query, String s) {
+    var i = 0;
+    for (var j = 0; j < s.length && i < query.length; j++) {
+      if (s[j] == query[i]) i++;
+    }
+    return i == query.length;
+  }
+
+  /// 候选池分三层，按优先级依次追加（关键词 → 表名 → 字段）：
+  /// - 关键词：前缀匹配（含 ORDER BY 等多词短语）；
+  /// - 表名：前缀 → 包含 → 模糊子序列（≥3 字符）；
+  /// - 字段（上下文表 / SQL 中引用表的列）：前缀 → 包含。
   List<String> get _suggestions {
-    final w = _currentWord.toUpperCase();
+    final w = _currentWord;
     if (w.isEmpty) return [];
-    // 把 SQL 中引用到的所有表的字段也纳入候选池。
-    final sqlFields = _sqlTableColumns.values.expand((c) => c.map((i) => i.field));
-    final pool = <String>{
-      ..._keywords,
-      ..._tables,
-      ..._contextColumns.map((c) => c.field),
-      ...sqlFields,
-    };
-    final seen = <String>{};
+    final wu = w.toUpperCase();
     final out = <String>[];
-    for (final item in pool) {
+    final seen = <String>{};
+    void add(String item) {
       final u = item.toUpperCase();
-      if (u.startsWith(w) && !seen.contains(u) && u != w) {
-        seen.add(u);
-        out.add(item);
+      if (u == wu || !seen.add(u)) return;
+      out.add(item);
+    }
+
+    for (final k in _keywords) {
+      if (k.toUpperCase().startsWith(wu)) add(k);
+    }
+    for (final t in _tables) {
+      if (t.toUpperCase().startsWith(wu)) add(t);
+    }
+    if (wu.length >= 2) {
+      for (final t in _tables) {
+        if (t.toUpperCase().contains(wu)) add(t);
+      }
+    }
+    if (wu.length >= 3) {
+      for (final t in _tables) {
+        if (_isSubsequence(wu, t.toUpperCase())) add(t);
+      }
+    }
+    final fields = <String>{
+      ..._contextColumns.map((c) => c.field),
+      ..._sqlTableColumns.values.expand((c) => c.map((i) => i.field)),
+    };
+    for (final f in fields) {
+      if (f.toUpperCase().startsWith(wu)) add(f);
+    }
+    if (wu.length >= 2) {
+      for (final f in fields) {
+        if (f.toUpperCase().contains(wu)) add(f);
       }
     }
     return out.take(12).toList();
