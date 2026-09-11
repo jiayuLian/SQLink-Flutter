@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/mysql_service.dart';
 import '../models/connection.dart' show ColumnInfo;
 import '../services/csv_export.dart';
+import '../services/sql_split.dart';
 import '../settings/app_settings.dart';
 import '../widgets/result_grid.dart';
 
@@ -391,7 +392,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
               : '执行成功';
       if (mounted) setState(() => _outcomes = outs);
       // 单条语句、且产生唯一结果集时才尝试判定可编辑。
-      final single = sql.split(';').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      // 用「引号/注释感知」的切分（对齐 Swift splitStatements），
+      // 否则 `WHERE a='x;y'` 会被误判成两条语句而失去可编辑能力。
+      final single = splitStatements(sql);
       if (single.length == 1 && resultSets.length == 1) {
         await _tryDetectEditable(single.first, resultSets.first);
       }
@@ -485,6 +488,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       }
       final hasWhere =
           RegExp(r'\bwhere\b', caseSensitive: false).hasMatch(sql);
+      // 对齐 Swift enterEdit 的一致性守卫：结果集必须包含主键列，
+      // 否则保存时无法定位行（会拼出 `WHERE pk = ''` 的假成功）。
+      final pkIndex = rs.columns.indexOf(pk);
       if (mounted) {
         setState(() {
           _editTable = tableName;
@@ -494,9 +500,9 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
               .map((r) => Map<String, String?>.from(r))
               .toList();
           _editPK = pk;
-          _editPKIndex = rs.columns.indexOf(pk);
-          // 安全约束：必须带 WHERE 才允许编辑（防全表误改）。
-          _canEdit = hasWhere;
+          _editPKIndex = pkIndex;
+          // 安全约束：必须带 WHERE 才允许编辑（防全表误改），且结果集须含主键列。
+          _canEdit = hasWhere && pkIndex >= 0;
         });
       }
     } catch (_) {
@@ -547,7 +553,10 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
       _editError = null;
     });
     try {
+      // 未生效的行数（主键为 NULL 无法定位 / 影响行数为 0）：用于避免「假成功」。
+      var failed = 0;
       for (var ri = 0; ri < _editingRows.length; ri++) {
+        if (ri >= _editRowsOriginal.length) continue;
         final sets = <String>[];
         for (var ci = 0; ci < _editColNames.length; ci++) {
           final colName = _editColNames[ci];
@@ -560,11 +569,24 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           }
         }
         if (sets.isEmpty) continue;
-        final pkVal = _quoteVal(_editRowsOriginal[ri][_editPK] ?? '');
+        // 主键为 NULL 时无法定位行：跳过并计入失败。否则会拼出
+        // `WHERE pk = ''`，匹配不到任何记录却提示「保存成功」。
+        final pkRaw = _editRowsOriginal[ri][_editPK];
+        if (pkRaw == null) {
+          failed++;
+          continue;
+        }
+        final pkVal = _quoteVal(pkRaw);
         final sqlUpd = 'UPDATE ${_escId(_editDB!)}.${_escId(_editTable!)} '
             'SET ${sets.join(', ')} '
             'WHERE ${_escId(_editPK!)} = $pkVal LIMIT 1';
-        await widget.service.execute(sqlUpd);
+        final res = await widget.service.execute(sqlUpd);
+        // 影响行数为 0 表示没有匹配到任何记录，不能报「保存成功」（对齐 Swift）。
+        if (res.isNotEmpty &&
+            !res.first.isResultSet &&
+            res.first.affectedRows == 0) {
+          failed++;
+        }
       }
       // 回写结果集，使界面即时反映新值。
       final newRows = <Map<String, String?>>[];
@@ -594,7 +616,10 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
           _editMode = false;
           _editingRows = [];
           _hasChanges = false;
-          _editMessage = '保存成功';
+          // 有行未生效时不能只说「保存成功」（对齐 Swift）。
+          _editMessage = failed == 0
+              ? '保存成功'
+              : '保存完成（$failed 行未匹配到记录，未生效）';
           _message = null;
         });
       }

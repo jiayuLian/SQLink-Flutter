@@ -130,6 +130,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
   }
 
   Future<void> _load() async {
+    // 数据即将整体替换：若正处于编辑态先退出编辑（翻页 / 筛选 / 每页条数入口
+    // 都已锁定，这里只是兜底），避免「旧编辑值 × 新页主键」错位写库。
+    if (_editMode) _cancelEdit();
     setState(() => _loading = true);
     try {
       final ps = _ps;
@@ -328,7 +331,10 @@ class _TableDataScreenState extends State<TableDataScreen> {
     }
     setState(() => _saving = true);
     try {
+      // 未生效的行数（主键为 NULL 无法定位 / 影响行数为 0）：用于避免「假成功」。
+      var failed = 0;
       for (var ri = 0; ri < _editing.length; ri++) {
+        if (ri >= _data!.rows.length) continue;
         final sets = <String>[];
         for (var ci = 0; ci < _data!.columns.length; ci++) {
           final colName = _data!.columns[ci];
@@ -342,18 +348,33 @@ class _TableDataScreenState extends State<TableDataScreen> {
           }
         }
         if (sets.isEmpty) continue;
-        final pkVal = _quoteValue(_data!.rows[ri][pk] ?? '');
+        // 主键为 NULL 时无法定位行：跳过并计入失败。否则会拼出
+        // `WHERE pk = ''`，匹配不到任何记录却提示「保存成功」。
+        final pkRaw = _data!.rows[ri][pk];
+        if (pkRaw == null) {
+          failed++;
+          continue;
+        }
+        final pkVal = _quoteValue(pkRaw);
         final sql = 'UPDATE ${_escId(widget.db)}.${_escId(widget.table)} '
             'SET ${sets.join(', ')} '
             'WHERE ${_escId(pk)} = $pkVal LIMIT 1';
-        await widget.service.execute(sql);
+        final res = await widget.service.execute(sql);
+        // 影响行数为 0 表示没有匹配到任何记录，不能报「保存成功」（对齐 Swift）。
+        if (res.isNotEmpty &&
+            !res.first.isResultSet &&
+            res.first.affectedRows == 0) {
+          failed++;
+        }
       }
       if (mounted) {
         setState(() {
           _editMode = false;
           _editing = [];
           _hasChanges = false;
-          _editMessage = '保存成功';
+          _editMessage = failed == 0
+              ? '保存成功'
+              : '保存完成（$failed 行未匹配到记录，未生效）';
           _editError = null;
         });
       }
@@ -374,8 +395,14 @@ class _TableDataScreenState extends State<TableDataScreen> {
   Widget build(BuildContext context) {
     final ps = _ps;
     final pk = _primaryKey();
-    final pkOk = pk != null;
+    // 可编辑的前提：表结构里有主键/唯一键，且**当前结果集包含该列**
+    // （列级 SELECT 权限、INVISIBLE 列等会导致结果集缺列 → 无法定位行）。
+    final pkOk = pk != null && _data != null && _data!.columns.contains(pk);
     final hasFilter = _hasFilter;
+    // 编辑态顶部提示（对齐 Swift：「编辑中已锁定翻页」）。
+    final editHint = pk == null
+        ? '⚠ 无主键/唯一键，不可保存'
+        : (!pkOk ? '⚠ 结果集未包含主键列，不可保存' : '编辑中已锁定翻页');
     final fullTitle = '${widget.db}.${widget.table}';
 
     return Scaffold(
@@ -470,10 +497,10 @@ class _TableDataScreenState extends State<TableDataScreen> {
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const Spacer(),
-                if (_editMode && !pkOk)
-                  const Text(
-                    '⚠ 无主键/唯一键，不可保存',
-                    style: TextStyle(fontSize: 11, color: Colors.orange),
+                if (_editMode)
+                  Text(
+                    editHint,
+                    style: const TextStyle(fontSize: 11, color: Colors.orange),
                     maxLines: 1,
                   ),
               ],
@@ -556,6 +583,8 @@ class _TableDataScreenState extends State<TableDataScreen> {
                   const Spacer(),
                   PopupMenuButton<int>(
                     tooltip: '每页条数',
+                    // 编辑期间锁定：改每页条数会换页，导致新页数据与旧编辑值错位写库。
+                    enabled: !_editMode,
                     onSelected: _changePageSize,
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 50, child: Text('50 条/页')),

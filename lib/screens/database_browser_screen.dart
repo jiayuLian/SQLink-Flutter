@@ -6,9 +6,8 @@ import '../screens/query_console_screen.dart';
 /// 数据库浏览（对齐 Swift 的 DatabaseBrowserView → TableListView 分层下钻）。
 /// - [db] 为 null：显示数据库列表；导航栏标题为连接名；点击某库进入表列表。
 /// - [db] 非 null：显示该库的表列表；点击表进入**表详情页**（两级进表）。
-/// 两级列表的**首行**均为「新建查询」（对齐 Swift：
-/// 库列表「新建查询」→ 不指定库；表列表「新建查询（库：db）」）。
-/// 表列表导航栏右侧提供「切换库」（仅从库列表进入时显示），点击返回库列表。
+/// 查询控制台入口对齐 Swift：库列表不再有入口；表列表导航栏右侧提供「查询」
+/// （与「切换库」并列），点击打开该库的空白控制台。
 /// 两个列表顶部均提供搜索框，实时过滤名称（对齐 Swift `.searchable`）。
 class DatabaseBrowserScreen extends StatefulWidget {
   final MySQLService service;
@@ -86,23 +85,13 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
     );
   }
 
-  /// 「新建查询」首个列表行（对齐 Swift 的 NavigationLink 首行）。
-  Widget _newQueryRow(String label, String? db) {
-    final color = Theme.of(context).colorScheme.primary;
-    return Card(
-      child: ListTile(
-        leading: Icon(Icons.terminal, color: color),
-        title: Text(
-          label,
-          style: TextStyle(color: color),
-          overflow: TextOverflow.ellipsis,
-        ),
-        // 对齐 Swift 的 NavigationLink：右侧显示下级箭头。
-        trailing: Icon(Icons.chevron_right, color: color),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => QueryConsoleScreen(service: widget.service, db: db),
-          ),
+  /// 打开查询控制台（不指定默认表 → 进入即空白，由用户自行输入 SQL）。
+  void _openConsole() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QueryConsoleScreen(
+          service: widget.service,
+          db: widget.db,
         ),
       ),
     );
@@ -120,6 +109,12 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
             TextButton(
               onPressed: () => Navigator.of(context).maybePop(),
               child: const Text('切换库'),
+            ),
+          // 对齐 Swift TableListView：导航栏右侧「查询」入口。
+          if (!isDbList)
+            TextButton(
+              onPressed: _openConsole,
+              child: const Text('查询'),
             ),
         ],
       ),
@@ -143,17 +138,7 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
           return Column(
             children: [
               _searchBar(hint: '搜索数据库'),
-              Expanded(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: _newQueryRow('新建查询', null),
-                    ),
-                    const Expanded(child: Center(child: Text('没有可用的数据库'))),
-                  ],
-                ),
-              ),
+              const Expanded(child: Center(child: Text('没有可用的数据库'))),
             ],
           );
         }
@@ -163,12 +148,10 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(12),
-                // 首行固定为「新建查询」，其余为数据库。
-                itemCount: filtered.length + 1,
+                itemCount: filtered.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) {
-                  if (i == 0) return _newQueryRow('新建查询', null);
-                  final db = filtered[i - 1];
+                  final db = filtered[i];
                   return Card(
                     child: ListTile(
                       leading: const Icon(Icons.folder),
@@ -212,17 +195,7 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
           return Column(
             children: [
               _searchBar(hint: '搜索表'),
-              Expanded(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: _newQueryRow('新建查询（库：${widget.db}）', widget.db),
-                    ),
-                    const Expanded(child: Center(child: Text('（该库没有表）'))),
-                  ],
-                ),
-              ),
+              const Expanded(child: Center(child: Text('（该库没有表）'))),
             ],
           );
         }
@@ -232,13 +205,10 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(12),
-                itemCount: filtered.length + 1,
+                itemCount: filtered.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) {
-                  if (i == 0) {
-                    return _newQueryRow('新建查询（库：${widget.db}）', widget.db);
-                  }
-                  final t = filtered[i - 1];
+                  final t = filtered[i];
                   final isView = t['type'] == 'VIEW';
                   return Card(
                     child: ListTile(
