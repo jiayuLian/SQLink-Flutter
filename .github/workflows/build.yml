@@ -104,17 +104,25 @@ jobs:
               open(p, 'w', encoding='utf-8').write(s)
               print('injected useLegacyPackaging into', p)
           PY
-      - name: Build release APK (仅 arm64-v8a，市面上最主流架构)
+      - name: Build release APK (arm64 for phones + x86_64 for emulators)
         # 构建号取自 pubspec.yaml 的 version（+N 部分），不自动 +1：
         # 平时改 bug / 加功能但未测完，版本号保持不动；待用户确认「发版」
         # 后我再手动把 pubspec 的版本号 +1 并推送，App 端「检查更新」才提示。
+        #
+        # 为什么要额外带 x86_64：MuMu / 夜神 / BlueStacks 等 x86_64 模拟器
+        # 没有 x86_64 版 libflutter.so 时，只能用 Houdini/native bridge 去翻译
+        # arm64 引擎，启动即在 libflutter.so 内 SIGSEGV。拆成两个 APK 后，
+        # 手机继续用 arm64 小包（体积不变），模拟器用 x86_64 包。
         run: |
-          flutter build apk --release --target-platform=android-arm64 \
+          flutter build apk --release --split-per-abi \
+            --target-platform=android-arm64,android-x64 \
             --tree-shake-icons
       - uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
           retention-days: 7
 
   build_ipa:
@@ -178,7 +186,8 @@ jobs:
           path: ipa
       - name: Rename artifacts for release
         run: |
-          mv apk/app-release.apk apk/SQLink-Flutter.apk
+          mv apk/app-arm64-v8a-release.apk apk/SQLink-Flutter.apk
+          mv apk/app-x86_64-release.apk apk/SQLink-Flutter-x86_64.apk
           ls -la apk ipa
       - name: Generate release body with version marker
         # 正文 = 隐藏版本标记（App 端「检查更新」靠它比对，用户看不到）
@@ -221,4 +230,5 @@ jobs:
           body_path: RELEASE_BODY.md
           files: |
             apk/SQLink-Flutter.apk
+            apk/SQLink-Flutter-x86_64.apk
             ipa/SQLink-Flutter.ipa
