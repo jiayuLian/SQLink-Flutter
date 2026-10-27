@@ -45,6 +45,9 @@ class MySQLService {
   /// 正在进行的重连（并发请求共享同一次重连，避免两个页面同时重建连接互相踩）。
   Future<void>? _healing;
 
+  /// 语句串行队列：保证同一时刻只有一个操作在用这条连接。
+  Future<void> _gate = Future<void>.value();
+
   MySQLService(this.profile);
 
   Future<void> connect(String password) async {
@@ -163,7 +166,25 @@ class MySQLService {
   ///    socket 被系统/对端回收，写数据抛 broken pipe / connection reset 即此类）。
   /// 2) 兜底按错误文案关键词判断，覆盖 mysql_client_plus 可能以普通 Exception 抛出的
   ///    各种断连措辞（关键词扩到常见 iOS/驱动写法，避免漏接导致"写入数据失败"）。
-  Future<List<ResultSetData>> execute(String sql) async {
+  Future<List<ResultSetData>> execute(String sql) =>
+      _serial(() => _executeInner(sql));
+
+  /// 串行执行：mysql 协议一条连接上不能并发发语句，否则结果包会串台。
+  /// 回前台探活与用户操作同时触发时，也必须排队（探活先跑完再发用户语句）。
+  Future<T> _serial<T>(Future<T> Function() body) {
+    final completer = Completer<T>();
+    final prev = _gate;
+    _gate = prev.then((_) async {
+      try {
+        completer.complete(await body());
+      } catch (e, st) {
+        if (!completer.isCompleted) completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
+
+  Future<List<ResultSetData>> _executeInner(String sql) async {
     // 空闲太久 / 刚从后台回来 / 连接已被重置：先探活或重建，再接用户的语句。
     await _ensureAlive();
     try {
@@ -254,7 +275,8 @@ class MySQLService {
     if (_password == null || _conn == null) return;
     _stale = true;
     try {
-      await _ensureAlive();
+      // 走串行队列：正在跑的语句先完成，探活不会插到它中间去。
+      await _serial<void>(_ensureAlive);
     } catch (_) {
       // 网络此刻确实不通，等用户操作时再重试。
     }
