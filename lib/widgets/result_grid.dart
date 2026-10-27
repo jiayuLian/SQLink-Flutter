@@ -50,6 +50,11 @@ class _ResultGridState extends State<ResultGrid> {
   double _scale = 1.0;
   double _startScale = 1.0;
 
+  // 表头横向滚动控制器：表头固定在顶部，但横向必须与数据区同步，
+  // 否则左右滑动后列名和列内容会错位。
+  final ScrollController _headerH = ScrollController();
+  final ScrollController _bodyH = ScrollController();
+
   static double _clamp(double v) => v < 0.6 ? 0.6 : (v > 3.0 ? 3.0 : v);
 
   @override
@@ -57,6 +62,7 @@ class _ResultGridState extends State<ResultGrid> {
     super.initState();
     if (widget.controller != null) _scale = widget.controller!.scale;
     widget.controller?.addListener(_syncFromController);
+    _bodyH.addListener(_syncHeaderScroll);
   }
 
   @override
@@ -71,14 +77,28 @@ class _ResultGridState extends State<ResultGrid> {
 
   @override
   void dispose() {
+    _bodyH.removeListener(_syncHeaderScroll);
+    _headerH.dispose();
+    _bodyH.dispose();
     widget.controller?.removeListener(_syncFromController);
     super.dispose();
+  }
+
+  /// 把数据区的横向偏移同步给固定表头。
+  void _syncHeaderScroll() {
+    if (!mounted || !_headerH.hasClients || !_bodyH.hasClients) return;
+    final target = _bodyH.offset.clamp(0.0, _headerH.position.maxScrollExtent);
+    if ((_headerH.offset - target).abs() > 0.01) {
+      _headerH.jumpTo(target);
+    }
   }
 
   void _syncFromController() {
     final c = widget.controller;
     if (c != null && (c.scale - _scale).abs() > 0.001) {
       setState(() => _scale = c.scale);
+      // 缩放后列宽变化，等布局完成再把表头对齐到数据区。
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeaderScroll());
     }
   }
 
@@ -86,6 +106,9 @@ class _ResultGridState extends State<ResultGrid> {
     final nv = _clamp(v);
     setState(() => _scale = nv);
     widget.controller?.setScale(nv);
+    // 布局尺寸随字号/列宽一起缩放（不使用 Transform.scale），
+    // 这样放大后滚动范围也会同步变大，且表头不会盖住数据行。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeaderScroll());
   }
 
   @override
@@ -94,22 +117,27 @@ class _ResultGridState extends State<ResultGrid> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pkIndex =
         widget.primaryKey == null ? -1 : widget.columns.indexOf(widget.primaryKey!);
-    const minW = 80.0;
-    const maxW = 160.0;
+    // 缩放直接作用到列宽/内边距/字号（与 Swift 版一致），
+    // 不用 Transform.scale —— 后者只改绘制不改布局，放大后滚动范围不会变，
+    // 而且固定表头会压到数据行上。
+    final minW = 80.0 * _scale;
+    final maxW = 160.0 * _scale;
+    final pad = 6.0 * _scale;
     const mono = TextStyle(fontFamily: 'monospace');
 
     // 表头（对齐 Swift ResultGridView.headerCell）：
     // 非主键列 Color.gray.opacity(0.18)，主键列 accentColor.opacity(0.18)。
     Widget headerCell(String label, bool isPk) => Container(
-          constraints: const BoxConstraints(minWidth: minW),
+          constraints: BoxConstraints(minWidth: minW),
           width: maxW,
-          padding: const EdgeInsets.all(6),
+          padding: EdgeInsets.all(pad),
           color: isPk
               ? scheme.primary.withValues(alpha: 0.18)
               : Colors.grey.withValues(alpha: 0.18),
           child: Text(
             label,
-            style: mono.copyWith(fontSize: 13, fontWeight: FontWeight.bold),
+            style: mono.copyWith(
+                fontSize: 13 * _scale, fontWeight: FontWeight.bold),
             overflow: TextOverflow.ellipsis,
           ),
         );
@@ -125,14 +153,14 @@ class _ResultGridState extends State<ResultGrid> {
         onTap: () => _showCell(context, colName, v),
         onLongPress: () => _copyCell(context, colName, v),
         child: Container(
-          constraints: const BoxConstraints(minWidth: minW),
+          constraints: BoxConstraints(minWidth: minW),
           width: maxW,
-          padding: const EdgeInsets.all(6),
+          padding: EdgeInsets.all(pad),
           color: bg,
           child: Text(
             v ?? 'NULL',
             style: mono.copyWith(
-              fontSize: 12,
+              fontSize: 12 * _scale,
               color: v == null ? Colors.grey.shade500 : null,
               fontStyle: v == null ? FontStyle.italic : null,
             ),
@@ -151,10 +179,9 @@ class _ResultGridState extends State<ResultGrid> {
       ],
     );
 
-    final body = Column(
+    final rowsBody = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        header,
         for (var ri = 0; ri < widget.rows.length; ri++)
           Row(
             children: [
@@ -185,16 +212,28 @@ class _ResultGridState extends State<ResultGrid> {
       },
       // 双击复位（对齐 Swift onTapGesture(count: 2) { gridScale = 1 }）。
       onDoubleTap: () => _applyScale(1.0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.vertical,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Transform.scale(
-            scale: _scale,
-            alignment: Alignment.topLeft,
-            child: body,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 固定表头：只参与横向滚动（由数据区驱动），不参与纵向滚动，
+          // 所以往下滑数据时字段名一直留在顶部。
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            controller: _headerH,
+            physics: const NeverScrollableScrollPhysics(),
+            child: header,
           ),
-        ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                controller: _bodyH,
+                child: rowsBody,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
