@@ -202,38 +202,123 @@ class _ResultGridState extends State<ResultGrid> {
       );
     }
 
-    return GestureDetector(
-      // 双指捏合缩放（对齐 Swift MagnificationGesture）。
-      onScaleStart: (_) => _startScale = _scale,
-      onScaleUpdate: (d) {
-        if (d.pointerCount >= 2) {
-          _applyScale(_startScale * d.scale);
-        }
-      },
-      // 双击复位（对齐 Swift onTapGesture(count: 2) { gridScale = 1 }）。
-      onDoubleTap: () => _applyScale(1.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 固定表头：只参与横向滚动（由数据区驱动），不参与纵向滚动，
-          // 所以往下滑数据时字段名一直留在顶部。
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            controller: _headerH,
-            physics: const NeverScrollableScrollPhysics(),
-            child: header,
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SingleChildScrollView(
+    // 表格 + 右下角缩放按钮：双指捏合仍然可用，另外提供单击 +/− 的入口，
+    // 模拟器/单手场景下手势不好触发时可以直接点。
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          // 双指捏合缩放（对齐 Swift MagnificationGesture）。
+          onScaleStart: (_) => _startScale = _scale,
+          onScaleUpdate: (d) {
+            if (d.pointerCount >= 2) {
+              _applyScale(_startScale * d.scale);
+            }
+          },
+          // 双击复位（对齐 Swift onTapGesture(count: 2) { gridScale = 1 }）。
+          onDoubleTap: () => _applyScale(1.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 固定表头：只参与横向滚动（由数据区驱动），不参与纵向滚动，
+              // 所以往下滑数据时字段名一直留在顶部。
+              SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                controller: _bodyH,
-                child: rowsBody,
+                controller: _headerH,
+                physics: const NeverScrollableScrollPhysics(),
+                child: header,
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    controller: _bodyH,
+                    child: rowsBody,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: _buildZoomButtons(scheme),
+        ),
+      ],
+    );
+  }
+
+  /// 右下角缩放按钮组：＋ / 百分比（点一下复位 100%）/ －。
+  /// 与双指捏合共用同一个 _scale，步进 0.2，范围 0.6~3.0。
+  Widget _buildZoomButtons(ColorScheme scheme) {
+    final canZoomIn = _scale < 2.999;
+    final canZoomOut = _scale > 0.601;
+
+    Widget button(IconData icon, String tooltip, bool enabled, VoidCallback onTap) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkResponse(
+          onTap: enabled ? onTap : null,
+          radius: 20,
+          containedInkWell: true,
+          child: Tooltip(
+            message: tooltip,
+            child: SizedBox(
+              width: 42,
+              height: 40,
+              child: Icon(
+                icon,
+                size: 18,
+                color: enabled
+                    ? scheme.primary
+                    : scheme.onSurface.withValues(alpha: 0.25),
               ),
             ),
           ),
-        ],
+        ),
+      );
+    }
+
+    return Material(
+      color: scheme.surface,
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: scheme.onSurface.withValues(alpha: 0.12),
+            width: 0.5,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            button(Icons.add, '放大', canZoomIn, () => _applyScale(_scale + 0.2)),
+            // 百分比：点一下复位到 100%（等价于双击表格复位）。
+            InkWell(
+              onTap: () => _applyScale(1.0),
+              child: Container(
+                width: 42,
+                height: 24,
+                alignment: Alignment.center,
+                child: Text(
+                  '${(_scale * 100).round()}%',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ),
+            button(Icons.remove, '缩小', canZoomOut,
+                () => _applyScale(_scale - 0.2)),
+          ],
+        ),
       ),
     );
   }
