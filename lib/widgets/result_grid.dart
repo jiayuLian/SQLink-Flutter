@@ -7,7 +7,9 @@ class ResultGridController extends ChangeNotifier {
   double _scale = 1.0;
   double get scale => _scale;
 
-  static double _clamp(double v) => v < 0.6 ? 0.6 : (v > 3.0 ? 3.0 : v);
+  /// 下限 0.5：字号会等比缩到 6px，已是「缩略图」可辨认的极限
+  /// （再小就只能看清色块了）。上限 3.0 与 Swift 版一致。
+  static double _clamp(double v) => v < 0.5 ? 0.5 : (v > 3.0 ? 3.0 : v);
 
   void setScale(double v) {
     final nv = _clamp(v);
@@ -22,7 +24,8 @@ class ResultGridController extends ChangeNotifier {
 /// 查询结果表格（Navicat 风格，对齐 Swift ResultGridView）。
 /// 主键列（PRI/UNI）以 🔑 标记并以主题色高亮；单元格等宽字体、定宽列、隔行底色；
 /// 点按单元格弹出完整值并支持复制，长按可直接复制。
-/// 支持双指捏合缩放（0.6~3.0）+ 双击复位（对齐 Swift gridScale 手势）。
+/// 支持双指捏合缩放（0.5~3.0）+ 双击复位（对齐 Swift gridScale 手势）。
+/// 列宽按内容自适应（不再固定 160px），短列省下的空间直接换成多看到几列。
 class ResultGrid extends StatefulWidget {
   final List<String> columns;
   final List<Map<String, String?>> rows;
@@ -55,7 +58,71 @@ class _ResultGridState extends State<ResultGrid> {
   final ScrollController _headerH = ScrollController();
   final ScrollController _bodyH = ScrollController();
 
-  static double _clamp(double v) => v < 0.6 ? 0.6 : (v > 3.0 ? 3.0 : v);
+  // 列宽基准（100% 时的像素宽度），按内容测量后缓存；
+  // 缩放时只做乘法（_baseWidths[ci] * _scale），避免捏合过程中每帧重排文字。
+  List<double>? _baseWidths;
+
+  /// 点击 +/− 的档位：缩得越小步长越小，保证每一下都有明显变化，
+  /// 且 100% 一定命中（不会停在 113% 这类别扭值）。捏合缩放仍是连续值。
+  static const List<double> _stops = [
+    0.5, 0.6, 0.75, 0.9, 1.0, 1.2, 1.4, 1.7, 2.0, 2.4, 2.8, 3.0
+  ];
+
+  static double _clamp(double v) => v < 0.5 ? 0.5 : (v > 3.0 ? 3.0 : v);
+
+  /// 找比当前比例大/小的下一档。
+  double _nextStop(bool zoomIn) {
+    if (zoomIn) {
+      for (final s in _stops) {
+        if (s > _scale + 0.001) return s;
+      }
+      return _stops.last;
+    }
+    for (final s in _stops.reversed) {
+      if (s < _scale - 0.001) return s;
+    }
+    return _stops.first;
+  }
+
+  /// 量一段文字在指定字号/字重下的宽度。
+  double _textWidth(String text, double fontSize, FontWeight weight) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+            fontFamily: 'monospace', fontSize: fontSize, fontWeight: weight),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return tp.width;
+  }
+
+  /// 估算每列需要多宽：表头与前 40 行内容里最宽的那个，夹在 56~220px。
+  /// 固定 160px 会让 `id`/`status`/`age` 这类短列白白吃掉一半屏幕。
+  List<double> _ensureWidths() {
+    final cached = _baseWidths;
+    if (cached != null && cached.length == widget.columns.length) return cached;
+    const sampleLimit = 40;
+    final sample =
+        widget.rows.length > sampleLimit ? sampleLimit : widget.rows.length;
+    final result = <double>[];
+    for (var ci = 0; ci < widget.columns.length; ci++) {
+      final col = widget.columns[ci];
+      final isPk = col == widget.primaryKey;
+      var w = _textWidth((isPk ? '🔑 ' : '') + col, 13, FontWeight.bold);
+      for (var ri = 0; ri < sample; ri++) {
+        final v = widget.rows[ri][col];
+        if (v == null || v.isEmpty) continue;
+        final vw = _textWidth(v, 12, FontWeight.normal);
+        if (vw > w) w = vw;
+      }
+      // +12 是左右内边距（各 6px），避免文字贴边。
+      result.add((w + 12).clamp(56.0, 220.0).toDouble());
+    }
+    _baseWidths = result;
+    return result;
+  }
 
   @override
   void initState() {
@@ -68,6 +135,10 @@ class _ResultGridState extends State<ResultGrid> {
   @override
   void didUpdateWidget(covariant ResultGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 换页/换表后内容变了，列宽估算要重算。
+    if (oldWidget.columns != widget.columns || oldWidget.rows != widget.rows) {
+      _baseWidths = null;
+    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_syncFromController);
       widget.controller?.addListener(_syncFromController);
@@ -120,16 +191,15 @@ class _ResultGridState extends State<ResultGrid> {
     // 缩放直接作用到列宽/内边距/字号（与 Swift 版一致），
     // 不用 Transform.scale —— 后者只改绘制不改布局，放大后滚动范围不会变，
     // 而且固定表头会压到数据行上。
-    final minW = 80.0 * _scale;
-    final maxW = 160.0 * _scale;
+    // 列宽不再固定 160：按内容测一次基准宽度，缩放时整体乘系数。
+    final colWidths = _ensureWidths();
     final pad = 6.0 * _scale;
     const mono = TextStyle(fontFamily: 'monospace');
 
     // 表头（对齐 Swift ResultGridView.headerCell）：
     // 非主键列 Color.gray.opacity(0.18)，主键列 accentColor.opacity(0.18)。
-    Widget headerCell(String label, bool isPk) => Container(
-          constraints: BoxConstraints(minWidth: minW),
-          width: maxW,
+    Widget headerCell(String label, bool isPk, int ci) => Container(
+          width: colWidths[ci] * _scale,
           padding: EdgeInsets.all(pad),
           color: isPk
               ? scheme.primary.withValues(alpha: 0.18)
@@ -153,8 +223,11 @@ class _ResultGridState extends State<ResultGrid> {
         onTap: () => _showCell(context, colName, v),
         onLongPress: () => _copyCell(context, colName, v),
         child: Container(
-          constraints: BoxConstraints(minWidth: minW),
-          width: maxW,
+          width: colWidths[ci] * _scale,
+          constraints: BoxConstraints(
+            // 缩小后行太矮不好长按复制，给一个最低行高。
+            minHeight: (26 * _scale).clamp(22.0, 78.0).toDouble(),
+          ),
           padding: EdgeInsets.all(pad),
           color: bg,
           child: Text(
@@ -175,7 +248,9 @@ class _ResultGridState extends State<ResultGrid> {
       children: [
         for (var ci = 0; ci < widget.columns.length; ci++)
           headerCell(
-              (ci == pkIndex ? '🔑 ' : '') + widget.columns[ci], ci == pkIndex),
+              (ci == pkIndex ? '🔑 ' : '') + widget.columns[ci],
+              ci == pkIndex,
+              ci),
       ],
     );
 
@@ -251,10 +326,10 @@ class _ResultGridState extends State<ResultGrid> {
   }
 
   /// 右下角缩放按钮组：＋ / 百分比（点一下复位 100%）/ －。
-  /// 与双指捏合共用同一个 _scale，步进 0.2，范围 0.6~3.0。
+  /// 与双指捏合共用同一个 _scale，范围 0.5~3.0；点击走预设档位，手感更稳。
   Widget _buildZoomButtons(ColorScheme scheme) {
     final canZoomIn = _scale < 2.999;
-    final canZoomOut = _scale > 0.601;
+    final canZoomOut = _scale > 0.501;
 
     Widget button(IconData icon, String tooltip, bool enabled, VoidCallback onTap) {
       return Material(
@@ -297,7 +372,7 @@ class _ResultGridState extends State<ResultGrid> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            button(Icons.add, '放大', canZoomIn, () => _applyScale(_scale + 0.2)),
+            button(Icons.add, '放大', canZoomIn, () => _applyScale(_nextStop(true))),
             // 百分比：点一下复位到 100%（等价于双击表格复位）。
             InkWell(
               onTap: () => _applyScale(1.0),
@@ -316,7 +391,7 @@ class _ResultGridState extends State<ResultGrid> {
               ),
             ),
             button(Icons.remove, '缩小', canZoomOut,
-                () => _applyScale(_scale - 0.2)),
+                () => _applyScale(_nextStop(false))),
           ],
         ),
       ),

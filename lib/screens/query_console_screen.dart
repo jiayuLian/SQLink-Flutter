@@ -773,7 +773,7 @@ class _QueryConsoleScreenState extends State<QueryConsoleScreen> {
             tooltip: '查询历史',
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.ios_share),
+            icon: const Icon(Icons.file_download_outlined),
             tooltip: '导出',
             enabled: resultSets.isNotEmpty,
             onSelected: (v) => v == 'sql' ? _exportSql() : _exportCsv(),

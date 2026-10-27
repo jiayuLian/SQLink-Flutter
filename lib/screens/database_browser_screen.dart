@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/mysql_service.dart';
 import '../screens/table_detail_screen.dart';
 import '../screens/query_console_screen.dart';
@@ -33,8 +34,10 @@ class DatabaseBrowserScreen extends StatefulWidget {
 }
 
 class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
-  late final Future<List<String>> _databases;
-  late final Future<List<Map<String, String>>> _tables;
+  // 不用 final：加载失败时允许「重试」重新发一次请求，
+  // 否则网络抖一下就只能退出页面重进。
+  late Future<List<String>> _databases;
+  late Future<List<Map<String, String>>> _tables;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -57,6 +60,38 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
   bool _matches(String text) {
     if (_searchQuery.isEmpty) return true;
     return text.toLowerCase().contains(_searchQuery.toLowerCase());
+  }
+
+  /// 加载失败时的统一视图：给出原因 + 重试按钮。
+  /// 连接断了 / 切后台回来 socket 失效时，重试一次往往就能好。
+  Widget _errorView(Object? error, VoidCallback onRetry) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off,
+                size: 36, color: Colors.grey.withValues(alpha: 0.7)),
+            const SizedBox(height: 10),
+            const Text('加载失败',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 4),
+            Text(
+              '$error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _searchBar({required String hint}) {
@@ -130,7 +165,8 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return Center(child: Text('加载失败：${snap.error}'));
+          return _errorView(snap.error,
+              () => setState(() => _databases = widget.service.listDatabases()));
         }
         final dbs = snap.data ?? [];
         final filtered = dbs.where(_matches).toList();
@@ -187,7 +223,10 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return Center(child: Text('加载失败：${snap.error}'));
+          return _errorView(
+              snap.error,
+              () => setState(
+                  () => _tables = widget.service.listTables(widget.db!)));
         }
         final tables = snap.data ?? [];
         final filtered = tables.where((t) => _matches(t['name'] ?? '')).toList();
@@ -216,6 +255,15 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
                           Icon(isView ? Icons.visibility : Icons.table_chart),
                       title: Text(t['name'] ?? ''),
                       trailing: const Icon(Icons.chevron_right),
+                      // 长按复制表名：写 SQL 时经常要把表名贴到别的 App。
+                      onLongPress: () {
+                        final name = t['name'] ?? '';
+                        Clipboard.setData(ClipboardData(text: name));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('已复制表名「$name」'),
+                          duration: const Duration(seconds: 1),
+                        ));
+                      },
                       // 两级进表：先进表详情页（结构 / 建表 SQL / 匹配 N 条），
                       // 再从详情页进「查看数据」（对齐 Swift TableDetailView）。
                       onTap: () => Navigator.of(context).push(
