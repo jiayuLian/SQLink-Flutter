@@ -63,13 +63,14 @@ class MySQLService {
         secure: useTLS,
         onBadCertificate: (_) => true,
       );
-      // 对齐 Swift：底层 socket 读写超时设为 30 秒。
+      // 连不上时别让用户干等：整体 10 秒超时（正常握手 1 秒内），
+      // 超时后给出明确原因，而不是卡在「正在连接」。
       await _conn!.connect().timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 10),
         onTimeout: () {
           _conn?.close();
           _conn = null;
-          throw Exception('连接超时（30 秒），请检查主机 / 端口 / 网络');
+          throw Exception('连接超时（10 秒），请检查主机 / 端口 / 网络');
         },
       );
     } on SocketException catch (e) {

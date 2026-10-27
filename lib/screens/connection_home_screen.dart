@@ -119,7 +119,7 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '主机不可达时最长等待 30 秒\n等不及可以直接取消',
+                  '网络较慢或主机不可达时会稍等片刻，可直接取消',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
