@@ -162,7 +162,15 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
       future: _databases,
       builder: (_, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          // 加载中不铺整屏转圈：保留搜索框与列表骨架，顶部一条细进度条，
+          // 数据回来时就地填充，不会先空一下再突然出内容。
+          return Column(
+            children: [
+              const LinearProgressIndicator(minHeight: 2),
+              _searchBar(hint: '搜索数据库'),
+              const Spacer(),
+            ],
+          );
         }
         if (snap.hasError) {
           return _errorView(snap.error,
@@ -220,7 +228,13 @@ class _DatabaseBrowserScreenState extends State<DatabaseBrowserScreen> {
       future: _tables,
       builder: (_, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          return Column(
+            children: [
+              const LinearProgressIndicator(minHeight: 2),
+              _searchBar(hint: '搜索表'),
+              const Spacer(),
+            ],
+          );
         }
         if (snap.hasError) {
           return _errorView(

@@ -76,11 +76,15 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen>
     _connect();
   }
 
+  /// 页面标题：对齐 Swift，连接名为空时退化成主机地址。
+  String get _pageTitle =>
+      widget.profile.name.isEmpty ? widget.profile.host : widget.profile.name;
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.profile.name)),
+        appBar: AppBar(title: Text(_pageTitle)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -116,38 +120,12 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen>
       );
     }
     if (_connecting) {
+      // 首次建连不再显示「正在连接 IP:端口… / 取消」的整屏页：
+      // 直接把列表页的空壳铺出来，顶部只留一条 2pt 细进度条，
+      // 连上后原地换成库列表，观感上就是"列表正在加载"。
       return Scaffold(
-        appBar: AppBar(title: Text(widget.profile.name)),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 18),
-                Text(
-                  '正在连接 ${widget.profile.host}:${widget.profile.port}…',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '网络较慢或主机不可达时会稍等片刻，可直接取消',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-                // 取消：退出本页即可。dispose 会关掉正在建的连接，
-                // connect() 完成时 _disposed 兜底再关一次，不会泄漏 socket。
-                OutlinedButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Text('取消'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        appBar: AppBar(title: Text(_pageTitle), centerTitle: true),
+        body: const LinearProgressIndicator(minHeight: 2),
       );
     }
     // 连接成功后进入数据库浏览（分层下钻：库 → 表 → 数据），
@@ -160,9 +138,7 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen>
       body: DatabaseBrowserScreen(
         service: _service,
         // 对齐 Swift DatabaseBrowserView：库列表标题为连接名。
-        title: widget.profile.name.isEmpty
-            ? widget.profile.host
-            : widget.profile.name,
+        title: _pageTitle,
         db: defaultDb.isNotEmpty ? defaultDb : null,
         // 用默认库直入表列表时，上游没有库列表可切换，故不出「切换库」。
         showSwitchDb: false,
