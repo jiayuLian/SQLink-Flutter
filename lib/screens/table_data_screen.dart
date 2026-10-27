@@ -582,7 +582,7 @@ class _TableDataScreenState extends State<TableDataScreen> {
               tooltip: editBlockReason ?? '编辑',
               onPressed: editBlockReason == null
                   ? _enterEdit
-                  : () => _showEditBlocked(editBlockReason!),
+                  : () => _showEditBlocked(editBlockReason),
             ),
             // 导出中显示转圈（导出会分块拉全量，可能耗时）。
             if (_exporting)
