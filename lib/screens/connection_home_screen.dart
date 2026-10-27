@@ -53,6 +53,15 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
     super.dispose();
   }
 
+  /// 失败页「重试」：回到连接中状态重新建连，不用退出去重来。
+  void _retry() {
+    setState(() {
+      _error = null;
+      _connecting = true;
+    });
+    _connect();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -71,9 +80,20 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('返回'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 网络抖动 / 服务器刚重启时，不用退出去重新点一次连接。
+                    FilledButton(
+                      onPressed: _retry,
+                      child: const Text('重试'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('返回'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -84,7 +104,36 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
     if (_connecting) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.profile.name)),
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 18),
+                Text(
+                  '正在连接 ${widget.profile.host}:${widget.profile.port}…',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '主机不可达时最长等待 30 秒\n等不及可以直接取消',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+                // 取消：退出本页即可。dispose 会关掉正在建的连接，
+                // connect() 完成时 _disposed 兜底再关一次，不会泄漏 socket。
+                OutlinedButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: const Text('取消'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
     // 连接成功后进入数据库浏览（分层下钻：库 → 表 → 数据），

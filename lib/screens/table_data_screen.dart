@@ -43,6 +43,15 @@ class _TableDataScreenState extends State<TableDataScreen> {
 
   final ResultGridController _gridController = ResultGridController();
 
+  /// 底栏空间紧（还要放「每页条数」和缩放%），把翻页按钮内边距压到最小，
+  /// 给「页码跳转」入口腾位置，避免小屏溢出。
+  static final ButtonStyle _pagerStyle = TextButton.styleFrom(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    minimumSize: const Size(0, 36),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.compact,
+  );
+
   late int _pageSize;
 
   // 行内编辑模式（对齐 Swift TableDataView 的 edit mode）
@@ -79,6 +88,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
   }
 
   int get _ps => _pageSize > 0 ? _pageSize : 100;
+
+  /// 窄屏（<400dp）底栏放不下「上一页 / 下一页」文字，只留箭头。
+  bool get _compactPager => MediaQuery.sizeOf(context).width < 400;
 
   /// 总页数（对齐 Swift maxPage）。
   int get _maxPage =>
@@ -186,8 +198,107 @@ class _TableDataScreenState extends State<TableDataScreen> {
   }
 
   void _gotoPage(int page) {
-    setState(() => _page = page);
+    final p = page.clamp(1, _maxPage < 1 ? 1 : _maxPage);
+    if (p == _page) return;
+    setState(() => _page = p);
     _load();
+  }
+
+  /// 页码输入跳转：长表要看第 50 页，不必点 49 次「下一页」。
+  /// 顺带把「首页 / 末页」放进来，不额外占底栏宽度（小屏会挤）。
+  Future<void> _showJumpToPage() async {
+    if (_editMode) {
+      _toast('编辑中已锁定翻页，请先「保存」或「取消」');
+      return;
+    }
+    if (_maxPage <= 1) {
+      _toast('当前只有 1 页');
+      return;
+    }
+    final ctrl = TextEditingController(text: '$_page');
+    final target = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('跳转到页码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: '页码（1 - $_maxPage）',
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (v) =>
+                  Navigator.of(ctx).pop(int.tryParse(v.trim()) ?? _page),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(1),
+                  child: const Text('首页'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(_maxPage),
+                  child: const Text('末页'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx)
+                      .pop(int.tryParse(ctrl.text.trim()) ?? _page),
+                  child: const Text('跳转'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    final raw = ctrl.text;
+    ctrl.dispose();
+    if (target == null) return;
+    if (raw.trim().isEmpty && target == _page) return;
+    final p = target.clamp(1, _maxPage);
+    if (p != _page) {
+      _gotoPage(p);
+    } else if (p != target) {
+      _toast('页码超出范围（1 - $_maxPage）');
+    }
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// 返回「不能编辑」的原因；null 表示可以编辑。
+  String? _editBlockReason(bool pkOk, bool hasFilter) {
+    final d = _data;
+    if (_loading) return '数据还在加载，请稍候';
+    if (d == null || !d.isResultSet) {
+      return '当前不是查询结果集（DDL / 写操作用不了编辑）';
+    }
+    if (!hasFilter) {
+      return '为避免误改整张表，请先用「筛选&排序」设置条件并应用';
+    }
+    if (!pkOk) {
+      return '结果集里没有主键/唯一键列，无法定位要更新的行';
+    }
+    return null;
+  }
+
+  void _showEditBlocked(String reason) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('不能编辑：$reason'),
+        duration: const Duration(seconds: 4),
+      ));
   }
 
   // ---- 点击标题显示完整表名 ----
@@ -403,6 +514,8 @@ class _TableDataScreenState extends State<TableDataScreen> {
     // （列级 SELECT 权限、INVISIBLE 列等会导致结果集缺列 → 无法定位行）。
     final pkOk = pk != null && _data != null && _data!.columns.contains(pk);
     final hasFilter = _hasFilter;
+    // 为什么不能编辑（null = 可以编辑）。按钮常显，点它就把原因讲清楚。
+    final editBlockReason = _editBlockReason(pkOk, hasFilter);
     // 编辑态顶部提示（对齐 Swift：「编辑中已锁定翻页」）。
     final editHint = pk == null
         ? '⚠ 无主键/唯一键，不可保存'
@@ -456,12 +569,21 @@ class _TableDataScreenState extends State<TableDataScreen> {
                   : const Text('保存'),
             ),
           ] else ...[
-            if (pkOk && hasFilter)
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: '编辑',
-                onPressed: (_data?.isResultSet ?? false) ? _enterEdit : null,
-              ),
+            // 刷新当前页：别处改了数据后不用退出去重进。
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新当前页',
+              onPressed: _loading ? null : () => _load(),
+            ),
+            // 编辑按钮常显：之前不满足条件时按钮直接消失，用户只会觉得
+            // 「这页怎么不能编辑」。现在点一下就告诉他缺什么。
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: editBlockReason ?? '编辑',
+              onPressed: editBlockReason == null
+                  ? _enterEdit
+                  : () => _showEditBlocked(editBlockReason!),
+            ),
             // 导出中显示转圈（导出会分块拉全量，可能耗时）。
             if (_exporting)
               const Padding(
@@ -476,7 +598,9 @@ class _TableDataScreenState extends State<TableDataScreen> {
               )
             else
               PopupMenuButton<String>(
-                icon: const Icon(Icons.ios_share),
+                // 之前用 ios_share（分享箭头），安卓用户会以为是「分享」；
+                // 这里导出的是 CSV/SQL 文件，用下载图标更直白。
+                icon: const Icon(Icons.file_download_outlined),
                 tooltip: '导出',
                 enabled: _data?.isResultSet ?? false,
                 onSelected: (v) => _export(v),
@@ -559,28 +683,47 @@ class _TableDataScreenState extends State<TableDataScreen> {
               child: Row(
                 children: [
                   TextButton(
+                    style: _pagerStyle,
                     onPressed: (_page > 1 && !_loading && !_editMode)
                         ? () => _gotoPage(_page - 1)
                         : null,
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.chevron_left, size: 18),
-                        Text('上一页'),
+                        const Icon(Icons.chevron_left, size: 18),
+                        // 窄屏只留箭头，给「每页条数 / 缩放%」腾空间（否则会挤爆）。
+                        if (!_compactPager) const Text('上一页'),
                       ],
                     ),
                   ),
-                  Text('$_page / $_maxPage',
-                      style: const TextStyle(fontSize: 12)),
+                  // 页码可点 → 弹窗输入 / 首页 / 末页。
+                  InkWell(
+                    onTap: _showJumpToPage,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('$_page / $_maxPage',
+                              style: const TextStyle(fontSize: 12)),
+                          const SizedBox(width: 1),
+                          const Icon(Icons.unfold_more, size: 12),
+                        ],
+                      ),
+                    ),
+                  ),
                   TextButton(
+                    style: _pagerStyle,
                     onPressed: (_page < _maxPage && !_loading && !_editMode)
                         ? () => _gotoPage(_page + 1)
                         : null,
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('下一页'),
-                        Icon(Icons.chevron_right, size: 18),
+                        if (!_compactPager) const Text('下一页'),
+                        const Icon(Icons.chevron_right, size: 18),
                       ],
                     ),
                   ),
