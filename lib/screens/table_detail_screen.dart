@@ -173,8 +173,21 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text('加载失败：$_error',
-                        style: const TextStyle(color: Colors.red)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('加载失败：$_error',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.red)),
+                        const SizedBox(height: 14),
+                        // 断线 / 超时后原地重试，不必退出页面再进。
+                        OutlinedButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('重试'),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               // 分组卡片版式（对齐 Swift TableDetailView 的 List + Section）。
@@ -425,9 +438,25 @@ class _DdlDialogState extends State<_DdlDialog> {
                 child: Center(child: CircularProgressIndicator()),
               )
             : _error != null
-                ? SingleChildScrollView(
-                    child: Text('加载失败：$_error',
-                        style: const TextStyle(color: Colors.red)),
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('加载失败：$_error',
+                          style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 12),
+                      // 断线 / 超时不弹窗退出，原地重拉一次建表语句。
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _loading = true;
+                            _error = null;
+                          });
+                          _load();
+                        },
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('重试'),
+                      ),
+                    ],
                   )
                 // 对齐 Swift：等宽高亮文本铺在次级背景色圆角卡片上（可缩放）。
                 : Container(

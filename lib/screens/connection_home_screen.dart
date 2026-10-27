@@ -16,7 +16,8 @@ class ConnectionHomeScreen extends StatefulWidget {
   State<ConnectionHomeScreen> createState() => _ConnectionHomeScreenState();
 }
 
-class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
+class _ConnectionHomeScreenState extends State<ConnectionHomeScreen>
+    with WidgetsBindingObserver {
   late final MySQLService _service;
   bool _connecting = true;
   String? _error;
@@ -28,6 +29,7 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service = MySQLService(widget.profile);
     _connect();
   }
@@ -48,9 +50,21 @@ class _ConnectionHomeScreenState extends State<ConnectionHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _service.close();
     super.dispose();
+  }
+
+  /// 切后台 / 锁屏回来时系统或服务器很可能已经回收了 TCP 连接
+  /// （本地 socket 未必知道）。这里在后台先探活并重建，
+  /// 用户下一次翻页 / 刷新就不用干等超时。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && !_connecting && _error == null) {
+      _service.probeAndRepair();
+    }
   }
 
   /// 失败页「重试」：回到连接中状态重新建连，不用退出去重来。

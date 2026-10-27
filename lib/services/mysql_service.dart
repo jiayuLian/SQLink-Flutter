@@ -26,6 +26,25 @@ class MySQLService {
   MySQLConnection? _conn;
   String? _password;
 
+  /// 单条语句最长等待时间。socket 半死（对端已消失但没有 RST）时，驱动只会一直等
+  /// 结果包，既不抛错也不返回 —— 没有这层超时，界面就会「点了翻页/刷新毫无反应」。
+  static const Duration _queryTimeout = Duration(seconds: 20);
+
+  /// 探活用的短超时：回前台 / 长时间空闲后先戳一下，别让用户等满 20 秒。
+  static const Duration _probeTimeout = Duration(seconds: 4);
+
+  /// 空闲超过此时长，下次操作前先探活。移动网络 NAT 和 MySQL 的 wait_timeout
+  /// 都会回收空闲连接，但本地 socket 不一定知道。
+  static const Duration _idleCheckAfter = Duration(minutes: 3);
+
+  DateTime _lastActivity = DateTime.now();
+
+  /// 被外部标记为「可能已断」：回前台时置位，下次操作前先探活。
+  bool _stale = false;
+
+  /// 正在进行的重连（并发请求共享同一次重连，避免两个页面同时重建连接互相踩）。
+  Future<void>? _healing;
+
   MySQLService(this.profile);
 
   Future<void> connect(String password) async {
@@ -115,6 +134,9 @@ class MySQLService {
       }
       rethrow;
     }
+    // 握手成功：重置探活状态。否则首次查询会白跑一次 SELECT 1。
+    _lastActivity = DateTime.now();
+    _stale = false;
   }
 
   /// 把 mysql_client_plus 可能返回的 Uint8List（bytes）安全解码成字符串。
@@ -142,23 +164,36 @@ class MySQLService {
   /// 2) 兜底按错误文案关键词判断，覆盖 mysql_client_plus 可能以普通 Exception 抛出的
   ///    各种断连措辞（关键词扩到常见 iOS/驱动写法，避免漏接导致"写入数据失败"）。
   Future<List<ResultSetData>> execute(String sql) async {
+    // 空闲太久 / 刚从后台回来 / 连接已被重置：先探活或重建，再接用户的语句。
+    await _ensureAlive();
     try {
       return await _executeOnce(sql);
     } on SocketException {
-      if (_password != null) {
-        await reconnect();
-        return await _executeOnce(sql);
-      }
-      rethrow;
+      if (_password == null) rethrow;
+      await _reconnectOnce();
+      return await _executeOnce(sql);
     } catch (e) {
       final msg = e.toString().toLowerCase();
+      // 查询超时：这条连接上可能还有迟到的结果包，状态已不可信，直接丢弃。
+      // 不自动重试——超时的语句可能已在服务端执行（写操作重试会生效两次）。
+      if (_isQueryTimeout(msg)) {
+        close();
+        throw Exception(
+            '操作超时（${_queryTimeout.inSeconds} 秒无响应），连接已重置，请重试');
+      }
       if (_password != null && _isConnectionLost(msg)) {
-        await reconnect();
+        await _reconnectOnce();
         return await _executeOnce(sql);
       }
       rethrow;
+    } finally {
+      _lastActivity = DateTime.now();
     }
   }
+
+  /// 查询超时（驱动在 queryTimeout 到点后抛 "Query timed out after ..."）。
+  static bool _isQueryTimeout(String msg) =>
+      msg.contains('query timed out') || msg.contains('timed out after');
 
   /// 判断错误文案是否为连接断开类（用于触发重连重试）。
   static bool _isConnectionLost(String msg) {
@@ -181,18 +216,80 @@ class MySQLService {
         msg.contains('tcp');
   }
 
-  Future<void> reconnect() async {
-    if (_password == null) throw Exception('尚未连接');
-    _conn?.close();
+  Future<void> reconnect() => _reconnectOnce();
+
+  /// 重连去重：回前台时探活 + 用户刚好点了一下，会同时发现断连；
+  /// 两边都调 connect() 的话后一次会把前一次刚建好的 socket 关掉。
+  Future<void> _reconnectOnce() {
+    final running = _healing;
+    if (running != null) return running;
+    final completer = Completer<void>();
+    final future = completer.future;
+    _healing = future;
+    _reconnectInner().then((_) {
+      if (identical(_healing, future)) _healing = null;
+      if (!completer.isCompleted) completer.complete();
+    }, onError: (Object e, StackTrace st) {
+      if (identical(_healing, future)) _healing = null;
+      if (!completer.isCompleted) completer.completeError(e, st);
+    });
+    return future;
+  }
+
+  Future<void> _reconnectInner() async {
+    final pw = _password;
+    if (pw == null) throw Exception('尚未连接');
+    try {
+      _conn?.close();
+    } catch (_) {
+      // 旧连接已经烂掉时 close 也可能抛，忽略即可。
+    }
     _conn = null;
-    await connect(_password!);
+    await connect(pw);
+  }
+
+  /// 回前台 / 长时间空闲后调用：先短超时探活，死连接直接换新的。
+  /// 失败不外抛——后台探活不该给用户弹错误，下一次操作还会再来一遍。
+  Future<void> probeAndRepair() async {
+    if (_password == null || _conn == null) return;
+    _stale = true;
+    try {
+      await _ensureAlive();
+    } catch (_) {
+      // 网络此刻确实不通，等用户操作时再重试。
+    }
+  }
+
+  /// 让外部标记「连接可能已失效」（切后台回来、长时间未操作）。
+  void markStale() {
+    _stale = true;
+  }
+
+  /// 探活或重建连接。只在必要时才发 `SELECT 1`，避免每次翻页都多一个往返。
+  Future<void> _ensureAlive() async {
+    if (_password == null) return;
+    if (_conn == null) {
+      await _reconnectOnce();
+      return;
+    }
+    final idle = DateTime.now().difference(_lastActivity) > _idleCheckAfter;
+    if (!_stale && !idle) return;
+    _stale = false;
+    try {
+      await _conn!.execute('SELECT 1', null, false, _probeTimeout);
+      _lastActivity = DateTime.now();
+    } catch (_) {
+      // 探活失败（超时 / 已被服务器或系统回收）→ 直接重建，把这次操作接上。
+      await _reconnectOnce();
+    }
   }
 
   Future<List<ResultSetData>> _executeOnce(String sql) async {
     final conn = _conn;
     if (conn == null) throw Exception('尚未连接');
     final List<ResultSetData> out = [];
-    IResultSet? result = await conn.execute(sql);
+    // 必须带 queryTimeout：socket 半死时驱动不会自己报错，会一直挂着等结果包。
+    IResultSet? result = await conn.execute(sql, null, false, _queryTimeout);
     while (result != null) {
       if (result.cols.isNotEmpty) {
         final columns = result.cols.map((c) => c.name).toList();

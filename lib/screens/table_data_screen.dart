@@ -659,8 +659,21 @@ class _TableDataScreenState extends State<TableDataScreen> {
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
-                          child: Text('错误：$_error',
-                              style: const TextStyle(color: Colors.red)),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('错误：$_error',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.red)),
+                              const SizedBox(height: 14),
+                              // 断线 / 超时后不必退出页面重进，原地再拉一次即可。
+                              OutlinedButton.icon(
+                                onPressed: _load,
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('重试'),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : _data != null && _data!.isResultSet
